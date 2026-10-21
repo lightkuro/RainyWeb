@@ -3,8 +3,12 @@
  *   - rain: layered filtered noise with slow gusts, plus individual drops
  *     tapping the glass (some synced to drops landing on screen);
  *   - thunder: rolling low-passed brown noise, delayed after lightning;
- *   - music: a slow generative ambient piece — warm pad chords and a sparse,
- *     soft piano-like melody through a long reverb.
+ *   - music: either a recorded track (which has rain mixed in) or a slow
+ *     generative ambient piece — warm pad chords and a sparse, soft
+ *     piano-like melody through a long reverb.
+ *
+ * Browsers only let a page make sound after the visitor interacts with it,
+ * so start() is called on load and again (via unlock) on the first tap.
  */
 (function (global) {
   'use strict';
@@ -30,15 +34,22 @@
     this.ctx = null;
     this.started = false;
     this.muted = false;
-    this.volumes = { master: 0.7, rain: 0.7, music: 0.45, thunder: 0.6 };
+    this.volumes = { master: 0.7, rain: 0.7, music: 0.8, thunder: 0.4 };
     this.intensity = 0.55;
+    this.music = 'none';      // a track id, 'ambient' or 'none'
+    this.tracks = {};         // id -> url
+    this.rainOn = true;
+    this.fadedIn = false;
+    // Opened straight from disk, a track can't be routed through Web Audio,
+    // so its element volume is used instead.
+    this.fileMode = global.location.protocol === 'file:';
     this.lastImpact = 0;
     this.impactBudget = 0;
   }
 
   AmbientAudio.prototype.start = function () {
     if (this.started) {
-      this.resume();
+      this.unlock();
       return true;
     }
     const AC = global.AudioContext || global.webkitAudioContext;
@@ -96,22 +107,88 @@
 
     this.buildRain();
     this.buildMusic();
-    this.applyVolumes(true);
+    this.buildTrack();
+    this.applyVolumes();
+
+    // Fade in gently the moment the browser lets sound play.
+    const self0 = this;
+    ctx.onstatechange = function () { self0.maybeFadeIn(); };
+    this.maybeFadeIn();
 
     const self = this;
     this.timer = setInterval(function () { self.tick(); }, 100);
     return true;
   };
 
-  AmbientAudio.prototype.resume = function () {
+  function quietly(p) { if (p && p.catch) p.catch(function () { /* waits for a tap */ }); }
+
+  // Called from any tap, click or key press: lets sound start or resume.
+  AmbientAudio.prototype.unlock = function () {
     if (!this.ctx) return;
-    if (this.ctx.state !== 'running' && this.ctx.resume) {
-      this.ctx.resume().catch(function () { /* needs another tap */ });
+    if (this.ctx.state !== 'running' && this.ctx.resume) quietly(this.ctx.resume());
+    if (this.silentEl && this.silentEl.paused) quietly(this.silentEl.play());
+    if (this.tracks[this.music] && this.trackEl.paused) quietly(this.trackEl.play());
+    this.maybeFadeIn();
+  };
+  AmbientAudio.prototype.resume = AmbientAudio.prototype.unlock;
+
+  // True while the browser is still holding sound back until a tap.
+  AmbientAudio.prototype.isBlocked = function () {
+    if (!this.ctx) return true;
+    if (this.ctx.state !== 'running') return true;
+    return !!this.tracks[this.music] && this.trackEl.paused;
+  };
+
+  AmbientAudio.prototype.maybeFadeIn = function () {
+    if (this.fadedIn || !this.ctx || this.ctx.state !== 'running') return;
+    this.fadedIn = true;
+    const t = this.ctx.currentTime;
+    this.master.gain.cancelScheduledValues(t);
+    this.master.gain.setValueAtTime(0, t);
+    this.applyVolumes(true);
+  };
+
+  /* ------------------------------ Tracks ------------------------------ */
+  AmbientAudio.prototype.buildTrack = function () {
+    const el = this.trackEl = document.createElement('audio');
+    el.loop = true;
+    el.preload = 'auto';
+    el.setAttribute('playsinline', '');
+    this.trackBus = this.ctx.createGain();
+    this.trackBus.connect(this.master);
+    if (!this.fileMode) {
+      try {
+        this.ctx.createMediaElementSource(el).connect(this.trackBus);
+      } catch (e) { this.fileMode = true; }
     }
-    if (this.silentEl && this.silentEl.paused) {
-      const p = this.silentEl.play();
-      if (p && p.catch) p.catch(function () { /* ignore */ });
+    if (this.fileMode) el.volume = 0;
+    this.setMusic(this.music);
+  };
+
+  AmbientAudio.prototype.setTracks = function (tracks) { this.tracks = tracks; };
+
+  // id: a key of this.tracks, 'ambient' (generated) or 'none'.
+  AmbientAudio.prototype.setMusic = function (id) {
+    this.music = id;
+    if (!this.ctx) return;
+    const url = this.tracks[id];
+    const el = this.trackEl;
+    if (url) {
+      if (el.getAttribute('src') !== url) el.src = url;
+      quietly(el.play());
+    } else if (!el.paused) {
+      el.pause();
     }
+    if (id === 'ambient' && this.nextChord < this.ctx.currentTime) {
+      this.nextChord = this.ctx.currentTime + 0.3;
+      this.nextNote = this.ctx.currentTime + 3;
+    }
+    this.applyVolumes();
+  };
+
+  AmbientAudio.prototype.setRainSound = function (on) {
+    this.rainOn = on;
+    this.applyVolumes();
   };
 
   // Older iOS routes Web Audio through the ringer channel, which the silent
@@ -298,7 +375,7 @@
 
   // Called by the simulation whenever a drop lands on screen.
   AmbientAudio.prototype.impact = function (size, x) {
-    if (!this.ctx || this.ctx.state !== 'running') return;
+    if (!this.ctx || this.ctx.state !== 'running' || !this.rainOn) return;
     if (this.impactBudget <= 0) return;
     this.impactBudget--;
     const level = Math.min(0.5, 0.05 + size * 0.03) * (0.6 + Math.random() * 0.4);
@@ -489,22 +566,31 @@
     this.impactBudget = Math.min(3, this.impactBudget + 1.4);
 
     // Random scattered taps across the pane.
-    const rate = 3 + this.intensity * 38;
-    let n = 0;
-    let lambda = rate * 0.1;
-    let p = Math.exp(-lambda), s = p, u = Math.random();
-    while (u > s && n < 20) { n++; p *= lambda / n; s += p; }
-    for (let i = 0; i < n; i++) {
-      this.tap(now + 0.05 + Math.random() * 0.1, rand(0.015, 0.09) * (0.5 + this.intensity * 0.6), rand(-0.9, 0.9));
+    if (this.rainOn) {
+      const rate = 3 + this.intensity * 38;
+      let n = 0;
+      const lambda = rate * 0.1;
+      let p = Math.exp(-lambda), s = p;
+      const u = Math.random();
+      while (u > s && n < 20) { n++; p *= lambda / n; s += p; }
+      for (let i = 0; i < n; i++) {
+        this.tap(now + 0.05 + Math.random() * 0.1, rand(0.015, 0.09) * (0.5 + this.intensity * 0.6), rand(-0.9, 0.9));
+      }
+      if (Math.random() < 0.015 + this.intensity * 0.02) this.drip(now + 0.05 + Math.random() * 0.1);
     }
-    if (Math.random() < 0.015 + this.intensity * 0.02) this.drip(now + 0.05 + Math.random() * 0.1);
+
+    // Element volume (used when opened from disk) eases toward its target.
+    if (this.fileMode && this.trackEl) {
+      const v = this.trackEl.volume + (this.trackTarget - this.trackEl.volume) * 0.04;
+      this.trackEl.volume = Math.max(0, Math.min(1, v));
+    }
 
     // Gusts: the rain swells and eases.
     if (Math.random() < 0.02) this.gustTarget = rand(0.7, 1.25);
     this.gust += (this.gustTarget - this.gust) * 0.03;
     if (Math.random() < 0.1) this.setIntensity(this.intensity);
 
-    this.scheduleMusic();
+    if (this.music === 'ambient') this.scheduleMusic();
   };
 
   AmbientAudio.prototype.setVolumes = function (v) {
@@ -517,10 +603,14 @@
     const t = this.ctx.currentTime;
     const v = this.volumes;
     const curve = function (x) { return x * x; };
-    this.master.gain.setTargetAtTime(this.muted ? 0 : curve(v.master) * 1.4, t, fadeIn ? 1.5 : 0.15);
-    this.rainBus.gain.setTargetAtTime(curve(v.rain) * 1.6, t, 0.15);
-    this.musicBus.gain.setTargetAtTime(curve(v.music) * 1.8, t, 0.15);
+    const master = this.muted || !this.fadedIn ? 0 : curve(v.master) * 1.4;
+    this.master.gain.setTargetAtTime(master, t, fadeIn ? 2.2 : 0.15);
+    this.rainBus.gain.setTargetAtTime(this.rainOn ? curve(v.rain) * 1.6 : 0, t, 0.4);
+    this.musicBus.gain.setTargetAtTime(this.music === 'ambient' ? curve(v.music) * 1.4 : 0, t, 0.8);
+    this.trackBus.gain.setTargetAtTime(this.tracks[this.music] ? curve(v.music) * 0.8 : 0, t, 0.8);
     this.thunderBus.gain.setTargetAtTime(curve(v.thunder) * 1.4, t, 0.15);
+    // From disk the element can't go through the master fader: ease it.
+    this.trackTarget = Math.min(1, master / 1.4 * curve(v.music));
   };
 
   AmbientAudio.prototype.setMuted = function (m) {

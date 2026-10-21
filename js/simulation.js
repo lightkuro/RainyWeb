@@ -30,9 +30,9 @@
   // Running-drop tail lengths (in body radii), finely stepped so shape changes
   // read as continuous.
   const TAILS = [];
-  for (let i = 0; i < 14; i++) TAILS.push(i * 0.1);
+  for (let i = 0; i < 14; i++) TAILS.push(i * 0.085);
   const MAX_R = 9.5;                            // CSS px: surface tension won't hold a bigger drop
-  const TAIL_W = 0.58;                          // width of a long tail's rounded end
+  const TAIL_W = 0.64;                          // radius of a long tail's rounded end
 
   function rand(a, b) { return a + Math.random() * (b - a); }
 
@@ -61,15 +61,27 @@
     return c;
   }
 
-  // A running drop: a round, heavy front and a shorter, narrower body
-  // dragged behind it that ends in a rounded tip (a tapered capsule), so the
-  // drop reads as one elongated bead of water. Body radius is 1 unit; the
-  // sprite spans x in [-1, 1] and y in [-(tail + end radius), 1], with the front
-  // centred at y = 0.
+  // Signed distance to an "uneven capsule": a circle of radius r1 at the
+  // origin joined by straight tangents to a circle of radius r2 a distance h
+  // along +y. The outline is convex, so the drop never pinches into a waist.
+  function sdUnevenCapsule(x, y, r1, r2, h) {
+    x = Math.abs(x);
+    const b = (r1 - r2) / h;
+    const a = Math.sqrt(1 - b * b);
+    const k = -b * x + a * y;
+    if (k < 0) return Math.hypot(x, y) - r1;
+    if (k > a * h) return Math.hypot(x, y - h) - r2;
+    return a * x + b * y - r1;
+  }
+
+  // A running drop: a round, heavy front with an egg-like taper behind it,
+  // ending in a rounded tip. Body radius is 1 unit; the sprite spans x in
+  // [-1, 1] and y in [-(tail + end radius), 1], with the front centred at
+  // y = 0.
   function makeTeardrop(tail) {
     const res = 32;
-    // Short tails stay nearly round, so a drop that starts to run doesn't
-    // visibly change shape.
+    // Short tails stay round, so a drop that starts to run doesn't visibly
+    // change shape.
     const tw = 1 + (TAIL_W - 1) * Math.min(1, tail / 0.8);
     const top = tail + tw;
     const c = document.createElement('canvas');
@@ -78,26 +90,21 @@
     const ctx = c.getContext('2d');
     const img = ctx.createImageData(c.width, c.height);
     const c0 = 1 / SIN;
-    const smooth = function (t) { return t * t * (3 - 2 * t); };
     for (let py = 0; py < c.height; py++) {
       const y = (py + 0.5) / res - top;
       for (let px = 0; px < c.width; px++) {
         const x = (px + 0.5) / res - 1;
-        let d2, scale;
-        if (y >= 0) {
-          d2 = x * x + y * y;
-          scale = 1;
-        } else if (y >= -tail) {
-          const w = 1 + (tw - 1) * smooth(-y / tail);
-          d2 = (x / w) * (x / w);
-          scale = Math.pow(w, 0.7);
+        let d, rLocal;
+        if (tail < 0.001) {
+          d = Math.hypot(x, y);
+          rLocal = 1;
         } else {
-          const dy = y + tail;
-          d2 = (x * x + dy * dy) / (tw * tw);
-          scale = Math.pow(tw, 0.7);
+          const sd = sdUnevenCapsule(x, -y, 1, tw, tail);
+          rLocal = 1 + (tw - 1) * Math.max(0, Math.min(1, -y / tail));
+          d = Math.max(0, 1 + sd / rLocal);
         }
         let hgt = 0;
-        if (d2 < 1) hgt = ((Math.sqrt(c0 * c0 - d2) - COS / SIN) / CAP) * scale;
+        if (d < 1) hgt = ((Math.sqrt(c0 * c0 - d * d) - COS / SIN) / CAP) * Math.pow(rLocal, 0.7);
         const i = (py * c.width + px) * 4;
         img.data[i] = img.data[i + 1] = img.data[i + 2] = 255;
         img.data[i + 3] = Math.max(0, Math.min(255, Math.round(hgt * 255)));
@@ -319,7 +326,13 @@
       d.tailF += (this.tailTarget(d) - d.tailF) * Math.min(1, 0.05 * dt);
 
       // Clear the condensation and fog along the path.
-      mc.lineWidth = d.vr * 2 * d.sx;
+      // A soft-edged sweep, so droplets at the edge of the path fade instead
+      // of being cut into glinting slivers.
+      mc.strokeStyle = 'rgba(0,0,0,0.45)';
+      mc.lineWidth = d.vr * 2.7 * d.sx;
+      mc.beginPath(); mc.moveTo(px, py); mc.lineTo(d.x, d.y); mc.stroke();
+      mc.strokeStyle = '#000';
+      mc.lineWidth = d.vr * 1.9 * d.sx;
       mc.beginPath(); mc.moveTo(px, py); mc.lineTo(d.x, d.y); mc.stroke();
       fc.lineWidth = (d.r * 2.3) / FOG_DIV;
       fc.beginPath(); fc.moveTo(px / FOG_DIV, py / FOG_DIV); fc.lineTo(d.x / FOG_DIV, d.y / FOG_DIV); fc.stroke();
@@ -418,26 +431,12 @@
     }
   };
 
-  // A splash of water thrown at the glass (CSS px): one heavy drop that will
-  // soon run, a ring of smaller drops and a fine spray.
+  // Tapping the glass adds a single medium drop.
   RainSim.prototype.addWater = function (xCss, yCss, s) {
     const k = this.sizeK(s);
     const x = xCss * this.k, y = yCss * this.k;
-    const main = this.makeDrop(x, y, rand(8.5, MAX_R) * k, k);
-    main.thr = main.r * 0.92;
-    const n = 5 + ((Math.random() * 6) | 0);
-    for (let i = 0; i < n; i++) {
-      const a = Math.random() * Math.PI * 2, dist = rand(16, 42) * k;
-      this.makeDrop(x + Math.cos(a) * dist, y + Math.sin(a) * dist, rand(2, 6) * k, k);
-    }
-    this.mctx.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < 70; i++) {
-      const a = Math.random() * Math.PI * 2, dist = Math.pow(Math.random(), 0.7) * 70 * k;
-      this.addMist(x + Math.cos(a) * dist, y + Math.sin(a) * dist, s);
-    }
-    this.mctx.globalAlpha = 1;
-    this.mctx.globalCompositeOperation = 'source-over';
-    if (this.onImpact) this.onImpact(14, x / this.W);
+    this.makeDrop(x, y, rand(5.5, 7) * k, k);
+    if (this.onImpact) this.onImpact(6, x / this.W);
   };
 
   // Water that evaporates from a drop fogs the glass around where it sat.

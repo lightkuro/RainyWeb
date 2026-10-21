@@ -491,9 +491,41 @@
     };
   }
 
+  /* ------------------------------------------------------------------ */
+  /* Photo backdrop (the default sunlit forest)                           */
+  /* ------------------------------------------------------------------ */
+  const photo = new Image();
+  let photoReady = false;
+  const photoWaiters = [];
+  photo.onload = function () {
+    photoReady = true;
+    photoWaiters.splice(0).forEach(function (cb) { cb(); });
+  };
+  if (global.BACKGROUND_FOREST) photo.src = global.BACKGROUND_FOREST;
+
+  function paintPhoto(ctx, w, h) {
+    if (!photoReady) {
+      ctx.fillStyle = vGradient(ctx, 0, h, [[0, '#1d2a1c'], [0.6, '#2c3a22'], [1, '#141b10']]);
+      ctx.fillRect(0, 0, w, h);
+      return {};
+    }
+    // Cover the canvas, cropping whichever side overflows.
+    const s = Math.max(w / photo.width, h / photo.height);
+    const dw = photo.width * s, dh = photo.height * s;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(photo, (w - dw) / 2, (h - dh) / 2, dw, dh);
+    // Overcast light: a rainy day is duller and cooler than the photo.
+    ctx.fillStyle = 'rgba(40,52,58,0.28)';
+    ctx.fillRect(0, 0, w, h);
+    return {};
+  }
+
+  const noLights = function () { return { count: 0, update: function () {} }; };
+
   const SCENES = {
+    photo: { name: 'Sunlit forest', paint: paintPhoto, lights: noLights },
     city: { name: 'City at night', paint: paintCity, lights: cityLights },
-    forest: { name: 'Misty forest', paint: paintForest, lights: function () { return { count: 0, update: function () {} }; } },
+    forest: { name: 'Misty forest', paint: paintForest, lights: noLights },
     harbor: { name: 'Harbor at dusk', paint: paintHarbor, lights: harborLights }
   };
 
@@ -504,13 +536,18 @@
      * Returns { canvas, lights } where lights is an animated light set.
      */
     create: function (id, canvas, w, h) {
-      const scene = SCENES[id] || SCENES.city;
+      const scene = SCENES[id] || SCENES.photo;
       canvas.width = w;
       canvas.height = h;
       const ctx = canvas.getContext('2d');
       const rnd = mulberry32(id.length * 7919 + 1234);
       const meta = scene.paint(ctx, w, h, rnd) || {};
       return { canvas: canvas, lights: scene.lights(meta) };
+    },
+    // Calls back once the photo backdrop has loaded (immediately if it has).
+    whenReady: function (cb) {
+      if (photoReady || !global.BACKGROUND_FOREST) cb();
+      else photoWaiters.push(cb);
     }
   };
 })(window);

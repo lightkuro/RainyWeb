@@ -1,55 +1,45 @@
 /*
- * Wires everything together: settings panel, render loop, lightning, input.
+ * Wires everything together: controls in the window sill, the settings
+ * panel, the render loop, lightning and input on the glass.
  */
 (function () {
   'use strict';
 
-  const STORAGE_KEY = 'rainy-window.settings.v1';
+  const STORAGE_KEY = 'rainy-window.settings.v2';
 
-  const DEFAULTS = {
-    intensity: 55,
-    dropSize: 100,
-    condensation: 60,
-    fog: 55,
-    storm: 25,
-    scene: 'city',
-    blur: 60,
-    refraction: 60,
-    brightness: 100,
-    frame: true,
-    quality: 'high',
-    master: 70,
-    rain: 70,
-    music: 45,
-    thunder: 60
+  const TRACKS = {
+    track1: 'assets/music/rain-music1.mp3',
+    track2: 'assets/music/rain-music2.mp3'
   };
 
-  const CONTROLS = [
-    { group: 'Rain' },
-    { key: 'intensity', label: 'Rain intensity', min: 0, max: 100, fmt: pct },
-    { key: 'dropSize', label: 'Drop size', min: 50, max: 200, fmt: pct },
-    { key: 'condensation', label: 'Condensation', min: 0, max: 100, fmt: pct },
-    { key: 'fog', label: 'Window fog', min: 0, max: 100, fmt: function (v) { return v === 0 ? 'Clear' : v === 100 ? 'Fully fogged' : v + '%'; } },
-    { key: 'storm', label: 'Thunderstorm', min: 0, max: 100, fmt: function (v) { return v === 0 ? 'Off' : v + '%'; } },
-    { group: 'View' },
-    { key: 'scene', label: 'Outside the window', type: 'select', options: Scenes.list.map(function (s) { return [s.id, s.name]; }) },
-    { key: 'blur', label: 'Depth of field', min: 0, max: 100, fmt: pct },
-    { key: 'refraction', label: 'Refraction', min: 0, max: 100, fmt: pct },
-    { key: 'brightness', label: 'Brightness', min: 50, max: 150, fmt: pct },
-    { key: 'frame', label: 'Window frame', type: 'toggle' },
-    { key: 'quality', label: 'Quality', type: 'select', options: [['low', 'Low (faster)'], ['medium', 'Medium'], ['high', 'High']] },
-    { group: 'Sound' },
-    { key: 'master', label: 'Master volume', min: 0, max: 100, fmt: pct },
-    { key: 'rain', label: 'Rain sounds', min: 0, max: 100, fmt: pct },
-    { key: 'music', label: 'Calming music', min: 0, max: 100, fmt: pct },
-    { key: 'thunder', label: 'Thunder', min: 0, max: 100, fmt: pct }
-  ];
+  const DEFAULTS = {
+    scene: 'photo',
+    intensity: 55,
+    fog: 35,
+    storm: 6,
+    dropSize: 100,
+    condensation: 60,
+    blur: 38,
+    refraction: 60,
+    brightness: 100,
+    quality: 'high',
+    volume: 70,
+    music: 'track1',
+    rainSound: false,   // the recorded tracks already have rain in them
+    rainVol: 70,
+    musicVol: 80,
+    thunderVol: 40,
+    wood: 'walnut',
+    advanced: false
+  };
 
   const QUALITY = {
     low: { water: 0.5, dpr: 1 },
     medium: { water: 0.75, dpr: 1.5 },
     high: { water: 1, dpr: 2 }
   };
+
+  const WOODS = [['oak', 'Oak'], ['teak', 'Teak'], ['walnut', 'Walnut'], ['mahogany', 'Mahogany'], ['black', 'Black']];
 
   function pct(v) { return v + '%'; }
 
@@ -78,6 +68,7 @@
   }
   const sim = new RainSim();
   const audio = new AmbientAudio();
+  audio.setTracks(TRACKS);
   const bgCanvas = document.createElement('canvas');
   let lights = { count: 0, update: function () {} };
   const lightPos = new Float32Array(Renderer.MAX_LIGHTS * 4);
@@ -131,16 +122,19 @@
   });
 
   /* ---------------------------- Lightning ----------------------------- */
-  const storm = { next: 0, pulses: [], level: 0 };
+  // Mild by default: rare, distant flashes with soft, far-off thunder.
+  const storm = { next: Infinity, pulses: [] };
   function scheduleStrike(now) {
     const s = settings.storm / 100;
     if (s <= 0) { storm.next = Infinity; return; }
-    const mean = 95 - s * 80; // seconds between strikes
-    storm.next = now + (-Math.log(1 - Math.random()) * mean + 4) * 1000;
+    const mean = 100 - s * 80; // seconds between strikes
+    storm.next = now + (-Math.log(1 - Math.random()) * mean + 8) * 1000;
   }
   function strike(now) {
-    const distance = Math.random();
-    const strength = 1 - distance * 0.6;
+    const s = settings.storm / 100;
+    // Gentle storms stay far away; wild ones can strike close.
+    const distance = 1 - Math.random() * Math.min(1, 0.25 + s * 1.3);
+    const strength = (1 - distance * 0.6) * (0.25 + 0.75 * s);
     const flickers = 2 + ((Math.random() * 3) | 0);
     let t = now;
     for (let i = 0; i < flickers; i++) {
@@ -196,87 +190,224 @@
     requestAnimationFrame(frame);
   }
 
-  /* ---------------------------- Settings UI --------------------------- */
-  const body = $('panel-body');
-  const inputs = {};
+  /* ---------------------------- Controls ------------------------------ */
+  // Every control registers a refresh function so the popovers and the
+  // advanced panel stay in sync when the same setting changes in either.
+  const refreshers = [];
+  function refreshAll() { refreshers.forEach(function (r) { r(); }); }
 
-  function buildPanel() {
-    body.innerHTML = '';
-    let group = null;
-    CONTROLS.forEach(function (c) {
-      if (c.group) {
-        group = document.createElement('section');
-        group.className = 'group';
-        const h = document.createElement('h3');
-        h.textContent = c.group;
-        group.appendChild(h);
-        body.appendChild(group);
-        return;
-      }
-      const wrap = document.createElement('div');
-      wrap.className = 'ctl' + (c.type === 'toggle' ? ' ctl--toggle' : '');
-      const row = document.createElement('div');
-      row.className = 'ctl__row';
-      const label = document.createElement('label');
-      const id = 'ctl-' + c.key;
-      label.htmlFor = id;
-      label.textContent = c.label;
-      row.appendChild(label);
-      wrap.appendChild(row);
-      let input;
-      if (c.type === 'select') {
-        input = document.createElement('select');
-        c.options.forEach(function (o) {
-          const opt = document.createElement('option');
-          opt.value = o[0];
-          opt.textContent = o[1];
-          input.appendChild(opt);
-        });
-        input.value = settings[c.key];
-        input.addEventListener('change', function () { update(c.key, input.value); });
-        wrap.appendChild(input);
-      } else if (c.type === 'toggle') {
-        const sw = document.createElement('span');
-        sw.className = 'switch';
-        input = document.createElement('input');
-        input.type = 'checkbox';
-        input.checked = !!settings[c.key];
-        input.addEventListener('change', function () { update(c.key, input.checked); });
-        sw.appendChild(input);
-        sw.appendChild(document.createElement('span'));
-        row.appendChild(sw);
-      } else {
-        const val = document.createElement('span');
-        val.className = 'ctl__val';
-        row.appendChild(val);
-        input = document.createElement('input');
-        input.type = 'range';
-        input.min = c.min;
-        input.max = c.max;
-        input.step = 1;
-        input.value = settings[c.key];
-        const paint = function () {
-          const v = Number(input.value);
-          val.textContent = c.fmt(v);
-          input.style.setProperty('--pct', ((v - c.min) / (c.max - c.min)) * 100 + '%');
-        };
-        paint();
-        input.addEventListener('input', function () { paint(); update(c.key, Number(input.value)); });
-        wrap.appendChild(input);
-      }
-      input.id = id;
-      inputs[c.key] = input;
-      group.appendChild(wrap);
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text) e.textContent = text;
+    return e;
+  }
+
+  let uid = 0;
+  function labelRow(text, forId) {
+    const row = el('div', 'ctl__label');
+    const l = el('label', '', text);
+    if (forId) l.htmlFor = forId;
+    row.appendChild(l);
+    return row;
+  }
+
+  // A row of named choices that each set a value (e.g. Off / Light / Heavy).
+  // The choice nearest the current value lights up.
+  function seg(key, label, options) {
+    const wrap = el('div', 'ctl');
+    const head = labelRow(label);
+    wrap.appendChild(head);
+    const group = el('div', 'seg');
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', label);
+    const buttons = options.map(function (o) {
+      const b = el('button', '', o[0]);
+      b.type = 'button';
+      b.addEventListener('click', function () { set(key, o[1]); });
+      group.appendChild(b);
+      return b;
     });
+    wrap.appendChild(group);
+    refreshers.push(function () {
+      let best = 0;
+      options.forEach(function (o, i) {
+        if (Math.abs(o[1] - settings[key]) < Math.abs(options[best][1] - settings[key])) best = i;
+      });
+      buttons.forEach(function (b, i) { b.setAttribute('aria-pressed', String(i === best)); });
+    });
+    return wrap;
+  }
+
+  function select(key, label, options) {
+    const id = 'ctl-' + key + '-' + (uid++);
+    const wrap = el('div', 'ctl');
+    wrap.appendChild(labelRow(label, id));
+    const s = el('select');
+    s.id = id;
+    options.forEach(function (o) {
+      const opt = el('option', '', o[1]);
+      opt.value = o[0];
+      s.appendChild(opt);
+    });
+    s.addEventListener('change', function () { set(key, s.value); });
+    wrap.appendChild(s);
+    refreshers.push(function () { s.value = settings[key]; });
+    return wrap;
+  }
+
+  function range(key, label, min, max, fmt) {
+    const id = 'ctl-' + key + '-' + (uid++);
+    const wrap = el('div', 'ctl');
+    const head = labelRow(label, id);
+    const val = el('span', 'ctl__val');
+    head.appendChild(val);
+    wrap.appendChild(head);
+    const r = el('input');
+    r.type = 'range';
+    r.id = id;
+    r.min = min;
+    r.max = max;
+    r.step = 1;
+    r.addEventListener('input', function () { set(key, Number(r.value)); });
+    wrap.appendChild(r);
+    refreshers.push(function () {
+      r.value = settings[key];
+      val.textContent = (fmt || pct)(settings[key]);
+      r.style.setProperty('--pct', ((settings[key] - min) / (max - min)) * 100 + '%');
+    });
+    return wrap;
+  }
+
+  function toggle(key, label) {
+    const id = 'ctl-' + key + '-' + (uid++);
+    const wrap = el('div', 'ctl ctl--inline');
+    const l = el('label', '', label);
+    l.htmlFor = id;
+    l.style.fontSize = '0.86rem';
+    wrap.appendChild(l);
+    const sw = el('span', 'switch');
+    const input = el('input');
+    input.type = 'checkbox';
+    input.id = id;
+    input.addEventListener('change', function () { set(key, input.checked); });
+    sw.appendChild(input);
+    sw.appendChild(el('span'));
+    wrap.appendChild(sw);
+    refreshers.push(function () { input.checked = !!settings[key]; });
+    return wrap;
+  }
+
+  function woodPicker() {
+    const wrap = el('div', 'ctl');
+    wrap.appendChild(labelRow('Frame'));
+    const row = el('div', 'swatches');
+    row.setAttribute('role', 'group');
+    row.setAttribute('aria-label', 'Frame colour');
+    const buttons = WOODS.map(function (w) {
+      const b = el('button', 'swatch');
+      b.type = 'button';
+      b.dataset.wood = w[0];
+      b.title = w[1];
+      b.setAttribute('aria-label', w[1]);
+      b.addEventListener('click', function () { set('wood', w[0]); });
+      row.appendChild(b);
+      return b;
+    });
+    wrap.appendChild(row);
+    refreshers.push(function () {
+      buttons.forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.wood === settings.wood)); });
+    });
+    return wrap;
+  }
+
+  function button(text, onClick) {
+    const b = el('button', 'btn', text);
+    b.type = 'button';
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  function section(title, children) {
+    const s = el('section', 'section');
+    if (title) s.appendChild(el('h3', '', title));
+    children.forEach(function (c) { s.appendChild(c); });
+    return s;
+  }
+
+  const MUSIC = [['track1', 'Rain music 1'], ['track2', 'Rain music 2'], ['ambient', 'Ambient piano'], ['none', 'No music']];
+
+  let pauseBtn = null;
+  function buildUI() {
+    // Rain & view popover: the essentials, as simple choices.
+    const rainPop = $('pop-rain');
+    rainPop.innerHTML = '';
+    rainPop.appendChild(select('scene', 'Outside', Scenes.list.map(function (s) { return [s.id, s.name]; })));
+    rainPop.appendChild(seg('intensity', 'Rain', [['Off', 0], ['Light', 30], ['Medium', 55], ['Heavy', 85]]));
+    rainPop.appendChild(seg('fog', 'Window fog', [['Clear', 0], ['Light', 35], ['Heavy', 75]]));
+    rainPop.appendChild(seg('storm', 'Lightning', [['Off', 0], ['Mild', 6], ['Stormy', 55]]));
+
+    // Sound popover.
+    const soundPop = $('pop-sound');
+    soundPop.innerHTML = '';
+    soundPop.appendChild(select('music', 'Music', MUSIC));
+    soundPop.appendChild(range('volume', 'Volume', 0, 100));
+    soundPop.appendChild(toggle('rainSound', 'Rain sounds'));
+
+    // Settings panel.
+    const body = $('panel-body');
+    body.innerHTML = '';
+    pauseBtn = button(paused ? 'Resume rain' : 'Pause rain', togglePause);
+    body.appendChild(section('', [
+      woodPicker(),
+      (function () { const r = el('div', 'row'); r.appendChild(button('Fullscreen', toggleFullscreen)); r.appendChild(pauseBtn); return r; })(),
+      toggle('advanced', 'Advanced settings')
+    ]));
+
+    const adv = el('div', 'advanced');
+    adv.appendChild(section('Rain', [
+      range('intensity', 'Rain intensity', 0, 100),
+      range('dropSize', 'Drop size', 50, 200),
+      range('condensation', 'Condensation', 0, 100),
+      range('fog', 'Window fog', 0, 100, function (v) { return v === 0 ? 'Clear' : v + '%'; }),
+      range('storm', 'Lightning', 0, 100, function (v) { return v === 0 ? 'Off' : v + '%'; })
+    ]));
+    adv.appendChild(section('View', [
+      range('blur', 'Depth of field', 0, 100),
+      range('refraction', 'Refraction', 0, 100),
+      range('brightness', 'Brightness', 50, 150),
+      select('quality', 'Quality', [['low', 'Low (faster)'], ['medium', 'Medium'], ['high', 'High']])
+    ]));
+    adv.appendChild(section('Sound levels', [
+      range('musicVol', 'Music', 0, 100),
+      range('rainVol', 'Rain sounds', 0, 100),
+      range('thunderVol', 'Thunder', 0, 100)
+    ]));
+    body.appendChild(adv);
+    refreshers.push(function () { adv.hidden = !settings.advanced; });
+
+    const help = el('p', 'help');
+    help.innerHTML = 'Tap the glass to add a drop. Press and drag to wipe it.<br>' +
+      '<kbd>S</kbd> settings · <kbd>M</kbd> mute · <kbd>F</kbd> fullscreen · <kbd>Space</kbd> pause · <kbd>H</kbd> hide controls';
+    body.appendChild(section('Tips', [help, (function () {
+      const r = el('div', 'row');
+      r.appendChild(button('Reset to defaults', resetAll));
+      return r;
+    })()]));
+    refreshAll();
+  }
+
+  function set(key, value) {
+    settings[key] = value;
+    // The recorded tracks already have rain in them, so their own rain
+    // sounds switch off with them (and back on for the other choices).
+    if (key === 'music') settings.rainSound = !TRACKS[value];
+    save();
+    apply(key);
+    refreshAll();
   }
 
   let blurRaf = 0;
-  function update(key, value) {
-    settings[key] = value;
-    save();
-    apply(key);
-  }
-
   function apply(key) {
     switch (key) {
       case 'scene':
@@ -290,8 +421,8 @@
       case 'dropSize':
         resize(true);
         break;
-      case 'frame':
-        $('frame').classList.toggle('is-hidden', !settings.frame);
+      case 'wood':
+        applyWood();
         break;
       case 'storm':
         scheduleStrike(performance.now());
@@ -299,119 +430,163 @@
       case 'intensity':
         audio.setIntensity(settings.intensity / 100);
         break;
-      case 'master': case 'rain': case 'music': case 'thunder':
+      case 'music':
+        audio.setMusic(settings.music);
+        audio.setRainSound(settings.rainSound);
+        break;
+      case 'rainSound':
+        audio.setRainSound(settings.rainSound);
+        break;
+      case 'volume': case 'musicVol': case 'rainVol': case 'thunderVol':
         applyVolumes();
         break;
     }
   }
 
+  function applyWood() {
+    $('frame').dataset.wood = settings.wood;
+  }
+
   function applyVolumes() {
     audio.setVolumes({
-      master: settings.master / 100,
-      rain: settings.rain / 100,
-      music: settings.music / 100,
-      thunder: settings.thunder / 100
+      master: settings.volume / 100,
+      music: settings.musicVol / 100,
+      rain: settings.rainVol / 100,
+      thunder: settings.thunderVol / 100
     });
   }
 
-  /* ---------------------------- Panel & dock -------------------------- */
-  const panel = $('panel');
-  const btnSettings = $('btn-settings');
-  function setPanel(open) {
-    panel.classList.toggle('is-open', open);
-    panel.setAttribute('aria-hidden', String(!open));
-    btnSettings.setAttribute('aria-expanded', String(open));
-    if (open) document.body.classList.remove('ui-hidden');
-    poke();
+  function resetAll() {
+    const prev = settings;
+    settings = Object.assign({}, DEFAULTS, { advanced: prev.advanced });
+    save();
+    applyWood();
+    applyVolumes();
+    audio.setIntensity(settings.intensity / 100);
+    audio.setMusic(settings.music);
+    audio.setRainSound(settings.rainSound);
+    scheduleStrike(performance.now());
+    if (prev.quality !== settings.quality || prev.dropSize !== settings.dropSize) resize(true);
+    else { paintScene(); }
+    refreshAll();
   }
-  btnSettings.addEventListener('click', function () { setPanel(!panel.classList.contains('is-open')); });
-  $('btn-close').addEventListener('click', function () { setPanel(false); });
 
-  const btnSound = $('btn-sound');
-  function setMuted(m) {
-    audio.setMuted(m);
-    btnSound.classList.toggle('is-muted', m);
-  }
-  btnSound.addEventListener('click', function () {
-    if (!audio.started) { startAudio(); return; }
-    setMuted(!audio.muted);
-  });
-
-  const btnPause = $('btn-pause');
   function togglePause() {
     paused = !paused;
-    btnPause.textContent = paused ? 'Resume rain' : 'Pause rain';
+    if (pauseBtn) pauseBtn.textContent = paused ? 'Resume rain' : 'Pause rain';
   }
-  btnPause.addEventListener('click', togglePause);
 
   function toggleFullscreen() {
     const d = document;
     if (!d.fullscreenElement && !d.webkitFullscreenElement) {
-      const el = d.documentElement;
-      const req = el.requestFullscreen || el.webkitRequestFullscreen;
+      const root = d.documentElement;
+      const req = root.requestFullscreen || root.webkitRequestFullscreen;
       if (req) {
-        const r = req.call(el);
+        const r = req.call(root);
         if (r && r.catch) r.catch(function () { /* not allowed here */ });
       }
     } else {
       (d.exitFullscreen || d.webkitExitFullscreen || function () {}).call(d);
     }
   }
-  $('btn-full').addEventListener('click', toggleFullscreen);
 
-  $('btn-reset').addEventListener('click', function () {
-    const prev = settings;
-    settings = Object.assign({}, DEFAULTS);
-    save();
-    buildPanel();
-    $('frame').classList.toggle('is-hidden', !settings.frame);
-    applyVolumes();
-    audio.setIntensity(settings.intensity / 100);
-    scheduleStrike(performance.now());
-    if (prev.quality !== settings.quality || prev.dropSize !== settings.dropSize) resize(true);
-    else paintScene();
+  /* ---------------------------- Popovers & panel ---------------------- */
+  const panel = $('panel');
+  const knobSettings = $('knob-settings');
+  const pops = [
+    { wrap: $('wrap-rain'), knob: $('knob-rain'), pop: $('pop-rain') },
+    { wrap: $('wrap-sound'), knob: $('knob-sound'), pop: $('pop-sound') }
+  ];
+
+  function setPop(p, open) {
+    p.pop.classList.toggle('is-open', open);
+    p.knob.setAttribute('aria-expanded', String(open));
+  }
+  function closePops(except) { pops.forEach(function (p) { if (p !== except) setPop(p, false); }); }
+
+  const hoverable = window.matchMedia('(hover: hover)').matches;
+  pops.forEach(function (p) {
+    let timer = 0;
+    if (hoverable) {
+      // Expand on hover, linger briefly so the pointer can move onto it.
+      p.wrap.addEventListener('mouseenter', function () {
+        clearTimeout(timer);
+        if (panel.classList.contains('is-open')) return;
+        closePops(p);
+        setPop(p, true);
+      });
+      p.wrap.addEventListener('mouseleave', function () {
+        timer = setTimeout(function () {
+          if (!p.wrap.contains(document.activeElement) || document.activeElement === p.knob) setPop(p, false);
+        }, 300);
+      });
+    }
+    p.knob.addEventListener('click', function () {
+      const open = !p.pop.classList.contains('is-open');
+      closePops(p);
+      setPop(p, open || hoverable);
+      if (panel.classList.contains('is-open')) setPanel(false);
+    });
   });
 
-  // Hide controls and cursor after a few seconds of stillness.
+  function setPanel(open) {
+    panel.classList.toggle('is-open', open);
+    panel.setAttribute('aria-hidden', String(!open));
+    knobSettings.setAttribute('aria-expanded', String(open));
+    if (open) { closePops(); document.body.classList.remove('ui-hidden'); }
+  }
+  knobSettings.addEventListener('click', function () { setPanel(!panel.classList.contains('is-open')); });
+  $('btn-close').addEventListener('click', function () { setPanel(false); });
+
+  // Clicking anywhere else closes the popovers.
+  document.addEventListener('pointerdown', function (e) {
+    if (!e.target.closest('.knob-wrap')) closePops();
+  });
+
+  // Show the icons while the pointer is over the frame.
+  window.addEventListener('pointermove', function (e) {
+    const cs = getComputedStyle(document.documentElement);
+    const fw = parseFloat(cs.getPropertyValue('--fw')) || 20;
+    const sill = $('frame').lastElementChild.getBoundingClientRect().height;
+    const onFrame = e.clientX < fw || e.clientX > cssW - fw || e.clientY < fw || e.clientY > cssH - sill;
+    document.body.classList.toggle('frame-hot', onFrame || !!e.target.closest('.knobs'));
+  }, { passive: true });
+  document.addEventListener('pointerleave', function () { document.body.classList.remove('frame-hot'); });
+
+  // Hide the cursor over the glass after a few seconds of stillness.
   let idleTimer = 0;
   function poke() {
     document.body.classList.remove('idle');
     clearTimeout(idleTimer);
-    idleTimer = setTimeout(function () {
-      if (!panel.classList.contains('is-open')) document.body.classList.add('idle');
-    }, 3500);
+    idleTimer = setTimeout(function () { document.body.classList.add('idle'); }, 3500);
   }
   ['pointermove', 'pointerdown', 'keydown'].forEach(function (e) { window.addEventListener(e, poke, { passive: true }); });
-  // Mobile browsers can suspend audio; any tap brings it back.
-  ['pointerdown', 'touchend', 'keydown'].forEach(function (e) {
-    window.addEventListener(e, function () { audio.resume(); }, { passive: true });
-  });
 
-  /* ---------------------------- Intro & audio ------------------------- */
-  const intro = $('intro');
-  function startAudio() {
-    if (audio.start()) {
-      audio.setIntensity(settings.intensity / 100, true);
-      applyVolumes();
-      setMuted(false);
-    }
+  /* ---------------------------- Sound --------------------------------- */
+  // Sound is on by default. Browsers hold it back until the first tap,
+  // click or key press; until then the sound ring breathes softly.
+  const knobSound = $('knob-sound');
+  function updateSoundKnob() {
+    knobSound.classList.toggle('is-waiting', audio.isBlocked());
+    knobSound.classList.toggle('is-muted', audio.muted);
   }
-  function dismissIntro(withSound) {
-    if (withSound) startAudio();
-    else btnSound.classList.add('is-muted');
-    intro.classList.add('is-hidden');
-    poke();
-  }
-  $('start').addEventListener('click', function (e) { e.stopPropagation(); dismissIntro(true); });
-  $('start-silent').addEventListener('click', function (e) { e.stopPropagation(); dismissIntro(false); });
+  ['pointerdown', 'pointerup', 'touchend', 'keydown', 'click'].forEach(function (e) {
+    window.addEventListener(e, function () {
+      audio.start();
+      setTimeout(updateSoundKnob, 300);
+    }, { passive: true, capture: true });
+  });
+  document.addEventListener('visibilitychange', function () {
+    last = performance.now();
+    if (!document.hidden) audio.unlock();
+  });
+  setInterval(updateSoundKnob, 1000);
 
   /* ------------------- Tap to add water, drag to wipe ---------------- */
-  // A quick tap throws a splash of water on the glass; pressing and dragging
-  // wipes it like a finger would.
+  const intro = $('intro');
   const DRAG_START = 10; // px of movement before a press becomes a wipe
   let press = null;
   canvas.addEventListener('pointerdown', function (e) {
-    if (!intro.classList.contains('is-hidden')) return;
     if (panel.classList.contains('is-open')) { setPanel(false); return; }
     press = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, id: e.pointerId, wiping: false };
     canvas.setPointerCapture(e.pointerId);
@@ -442,8 +617,8 @@
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     switch (e.key.toLowerCase()) {
       case 's': setPanel(!panel.classList.contains('is-open')); break;
-      case 'escape': setPanel(false); break;
-      case 'm': if (!audio.started) startAudio(); else setMuted(!audio.muted); break;
+      case 'escape': setPanel(false); closePops(); break;
+      case 'm': audio.setMuted(!audio.muted); updateSoundKnob(); break;
       case 'f': toggleFullscreen(); break;
       case 'h': document.body.classList.toggle('ui-hidden'); break;
       case ' ':
@@ -452,20 +627,27 @@
     }
   });
 
-  document.addEventListener('visibilitychange', function () {
-    last = performance.now();
-    if (!document.hidden) audio.resume();
-  });
-
   canvas.addEventListener('webglcontextlost', function (e) { e.preventDefault(); });
   canvas.addEventListener('webglcontextrestored', function () { location.reload(); });
 
   /* ---------------------------- Boot ---------------------------------- */
-  buildPanel();
-  $('frame').classList.toggle('is-hidden', !settings.frame);
+  buildUI();
+  applyWood();
   resize(true);
+  // Repaint once the photo backdrop has decoded.
+  Scenes.whenReady(function () { if (settings.scene === 'photo') paintScene(); });
   scheduleStrike(performance.now());
-  // An early strike so the storm makes itself known.
-  if (settings.storm > 0) storm.next = performance.now() + 12000 + Math.random() * 10000;
+
+  // Try to start sound straight away; most browsers wait for a first tap.
+  audio.setMusic(settings.music);
+  audio.setRainSound(settings.rainSound);
+  audio.setIntensity(settings.intensity / 100, true);
+  applyVolumes();
+  audio.start();
+  updateSoundKnob();
+
+  // The title drifts away on its own.
+  setTimeout(function () { intro.classList.add('is-hidden'); }, 2600);
+  setTimeout(function () { intro.hidden = true; }, 5000);
   requestAnimationFrame(function (t) { last = t; frame(t); });
 })();
