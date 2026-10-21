@@ -5,7 +5,7 @@
 (function () {
   'use strict';
 
-  const STORAGE_KEY = 'rainy-window.settings.v2';
+  const STORAGE_KEY = 'rainy-window.settings.v3';
 
   const TRACKS = {
     track1: 'assets/music/rain-music1.mp3',
@@ -16,20 +16,24 @@
     scene: 'photo',
     intensity: 55,
     fog: 35,
+    fogOn: true,
+    dropsOn: true,
     storm: 6,
     dropSize: 100,
     condensation: 60,
-    blur: 38,
+    blur: 10,
     refraction: 60,
-    brightness: 100,
+    brightness: 90,
     quality: 'high',
     volume: 70,
+    muted: false,
     music: 'track1',
     rainSound: false,   // the recorded tracks already have rain in them
-    rainVol: 70,
-    musicVol: 80,
+    rainVol: 50,
+    musicVol: 65,
     thunderVol: 40,
-    wood: 'walnut',
+    wood: 'classic',
+    grain: false,
     advanced: false
   };
 
@@ -39,7 +43,7 @@
     high: { water: 1, dpr: 2 }
   };
 
-  const WOODS = [['oak', 'Oak'], ['teak', 'Teak'], ['walnut', 'Walnut'], ['mahogany', 'Mahogany'], ['black', 'Black']];
+  const WOODS = [['classic', 'Classic'], ['oak', 'Oak'], ['teak', 'Teak'], ['walnut', 'Walnut'], ['mahogany', 'Mahogany'], ['black', 'Black']];
 
   function pct(v) { return v + '%'; }
 
@@ -165,12 +169,15 @@
   let sceneTime = 0;
   sim.onImpact = function (size, x) { audio.impact(size, x); };
 
+  let waterAmt = 1;
   function frame(now) {
     const dt = Math.min(100, now - last);
     last = now;
     const ss = simSettings();
+    // "Window drops" off: the glass dries quickly and nothing new lands.
+    waterAmt += ((settings.dropsOn ? 1 : 0) - waterAmt) * Math.min(1, dt / 250);
     if (!paused) {
-      sim.update(dt, ss);
+      if (settings.dropsOn || waterAmt > 0.01) sim.update(dt, settings.dropsOn ? ss : Object.assign({}, ss, { intensity: 0, condensation: 0 }));
       sceneTime += dt / 1000;
     }
     sim.draw(ss);
@@ -181,7 +188,8 @@
       time: sceneTime,
       refract: 0.25 + (settings.refraction / 100) * 1.5,
       heightScale: sim.rrefPx(ss),
-      fogAmt: settings.fog / 100,
+      fogAmt: settings.fogOn ? settings.fog / 100 : 0,
+      waterAmt: waterAmt,
       lightning: lightningLevel(now) * 0.9,
       rain: settings.intensity / 100,
       brightness: settings.brightness / 100,
@@ -338,14 +346,23 @@
   const MUSIC = [['track1', 'Rain music 1'], ['track2', 'Rain music 2'], ['ambient', 'Ambient piano'], ['none', 'No music']];
 
   let pauseBtn = null;
+  let soundHint = null;
   function buildUI() {
-    // Rain & view popover: the essentials, as simple choices.
+    // Rain & view popover: the essentials, as simple choices, in two columns.
     const rainPop = $('pop-rain');
     rainPop.innerHTML = '';
-    rainPop.appendChild(select('scene', 'Outside', Scenes.list.map(function (s) { return [s.id, s.name]; })));
-    rainPop.appendChild(seg('intensity', 'Rain', [['Off', 0], ['Light', 30], ['Medium', 55], ['Heavy', 85]]));
-    rainPop.appendChild(seg('fog', 'Window fog', [['Clear', 0], ['Light', 35], ['Heavy', 75]]));
-    rainPop.appendChild(seg('storm', 'Lightning', [['Off', 0], ['Mild', 6], ['Stormy', 55]]));
+    rainPop.classList.add('pop--wide');
+    const colA = el('div', 'pop__col');
+    colA.appendChild(select('scene', 'Outside', Scenes.list.map(function (s) { return [s.id, s.name]; })));
+    colA.appendChild(seg('intensity', 'Rain', [['Off', 0], ['Light', 30], ['Medium', 55], ['Heavy', 85]]));
+    colA.appendChild(seg('storm', 'Lightning', [['Off', 0], ['Mild', 6], ['Stormy', 55]]));
+    const colB = el('div', 'pop__col');
+    colB.appendChild(seg('brightness', 'Brightness', [['Dark', 60], ['Low', 75], ['Normal', 90], ['Bright', 100]]));
+    colB.appendChild(seg('blur', 'Background blur', [['Clear', 0], ['Normal', 10], ['Distant', 60]]));
+    colB.appendChild(toggle('fogOn', 'Window fog'));
+    colB.appendChild(toggle('dropsOn', 'Window drops'));
+    rainPop.appendChild(colA);
+    rainPop.appendChild(colB);
 
     // Sound popover.
     const soundPop = $('pop-sound');
@@ -353,35 +370,38 @@
     soundPop.appendChild(select('music', 'Music', MUSIC));
     soundPop.appendChild(range('volume', 'Volume', 0, 100));
     soundPop.appendChild(toggle('rainSound', 'Rain sounds'));
+    soundHint = el('p', 'pop__hint');
+    soundPop.appendChild(soundHint);
 
     // Settings panel.
     const body = $('panel-body');
     body.innerHTML = '';
     pauseBtn = button(paused ? 'Resume rain' : 'Pause rain', togglePause);
     body.appendChild(section('', [
+      select('quality', 'Quality', [['low', 'Low (faster)'], ['medium', 'Medium'], ['high', 'High']]),
       woodPicker(),
-      (function () { const r = el('div', 'row'); r.appendChild(button('Fullscreen', toggleFullscreen)); r.appendChild(pauseBtn); return r; })(),
-      toggle('advanced', 'Advanced settings')
+      toggle('grain', 'Wood grain'),
+      (function () { const r = el('div', 'row'); r.appendChild(button('Fullscreen', toggleFullscreen)); r.appendChild(pauseBtn); return r; })()
     ]));
-
-    const adv = el('div', 'advanced');
-    adv.appendChild(section('Rain', [
+    body.appendChild(section('View', [
       range('intensity', 'Rain intensity', 0, 100),
-      range('dropSize', 'Drop size', 50, 200),
-      range('condensation', 'Condensation', 0, 100),
       range('fog', 'Window fog', 0, 100, function (v) { return v === 0 ? 'Clear' : v + '%'; }),
-      range('storm', 'Lightning', 0, 100, function (v) { return v === 0 ? 'Off' : v + '%'; })
+      range('blur', 'Background blur', 0, 100),
+      range('brightness', 'Brightness', 50, 150)
     ]));
-    adv.appendChild(section('View', [
-      range('blur', 'Depth of field', 0, 100),
-      range('refraction', 'Refraction', 0, 100),
-      range('brightness', 'Brightness', 50, 150),
-      select('quality', 'Quality', [['low', 'Low (faster)'], ['medium', 'Medium'], ['high', 'High']])
-    ]));
-    adv.appendChild(section('Sound levels', [
+    body.appendChild(section('Sound levels', [
       range('musicVol', 'Music', 0, 100),
       range('rainVol', 'Rain sounds', 0, 100),
       range('thunderVol', 'Thunder', 0, 100)
+    ]));
+    body.appendChild(toggle('advanced', 'Advanced settings'));
+
+    const adv = el('div', 'advanced');
+    adv.appendChild(section('', [
+      range('dropSize', 'Drop size', 50, 200),
+      range('condensation', 'Condensation', 0, 100),
+      range('refraction', 'Refraction', 0, 100),
+      range('storm', 'Lightning', 0, 100, function (v) { return v === 0 ? 'Off' : v + '%'; })
     ]));
     body.appendChild(adv);
     refreshers.push(function () { adv.hidden = !settings.advanced; });
@@ -422,7 +442,12 @@
         resize(true);
         break;
       case 'wood':
+      case 'grain':
         applyWood();
+        break;
+      case 'muted':
+        audio.setMuted(settings.muted);
+        updateSoundKnob();
         break;
       case 'storm':
         scheduleStrike(performance.now());
@@ -445,6 +470,7 @@
 
   function applyWood() {
     $('frame').dataset.wood = settings.wood;
+    $('frame').classList.toggle('grain', !!settings.grain);
   }
 
   function applyVolumes() {
@@ -458,7 +484,7 @@
 
   function resetAll() {
     const prev = settings;
-    settings = Object.assign({}, DEFAULTS, { advanced: prev.advanced });
+    settings = Object.assign({}, DEFAULTS, { advanced: prev.advanced, muted: prev.muted });
     save();
     applyWood();
     applyVolumes();
@@ -493,6 +519,7 @@
   /* ---------------------------- Popovers & panel ---------------------- */
   const panel = $('panel');
   const knobSettings = $('knob-settings');
+  const knobSound = $('knob-sound');
   const pops = [
     { wrap: $('wrap-rain'), knob: $('knob-rain'), pop: $('pop-rain') },
     { wrap: $('wrap-sound'), knob: $('knob-sound'), pop: $('pop-sound') }
@@ -522,10 +549,18 @@
       });
     }
     p.knob.addEventListener('click', function () {
-      const open = !p.pop.classList.contains('is-open');
-      closePops(p);
-      setPop(p, open || hoverable);
       if (panel.classList.contains('is-open')) setPanel(false);
+      const isOpen = p.pop.classList.contains('is-open');
+      // The speaker mutes on click. On touch screens the first tap opens its
+      // popover, and a tap while it's open mutes.
+      if (p.knob === knobSound && (hoverable || isOpen)) {
+        if (!gestureStartedSound) set('muted', !settings.muted);
+        closePops(p);
+        setPop(p, true);
+        return;
+      }
+      closePops(p);
+      setPop(p, !isOpen || hoverable);
     });
   });
 
@@ -537,6 +572,7 @@
   }
   knobSettings.addEventListener('click', function () { setPanel(!panel.classList.contains('is-open')); });
   $('btn-close').addEventListener('click', function () { setPanel(false); });
+  $('btn-back').addEventListener('click', function () { setPanel(false); });
 
   // Clicking anywhere else closes the popovers.
   document.addEventListener('pointerdown', function (e) {
@@ -544,32 +580,44 @@
   });
 
   // Show the icons while the pointer is over the frame.
+  const frameLeft = document.querySelector('.frame__left');
+  const frameSill = document.querySelector('.frame__sill');
   window.addEventListener('pointermove', function (e) {
-    const cs = getComputedStyle(document.documentElement);
-    const fw = parseFloat(cs.getPropertyValue('--fw')) || 20;
-    const sill = $('frame').lastElementChild.getBoundingClientRect().height;
+    const fw = frameLeft.getBoundingClientRect().width;
+    const sill = frameSill.getBoundingClientRect().height;
     const onFrame = e.clientX < fw || e.clientX > cssW - fw || e.clientY < fw || e.clientY > cssH - sill;
     document.body.classList.toggle('frame-hot', onFrame || !!e.target.closest('.knobs'));
   }, { passive: true });
   document.addEventListener('pointerleave', function () { document.body.classList.remove('frame-hot'); });
 
-  // Hide the cursor over the glass after a few seconds of stillness.
+  // A normal cursor that hides after 5 seconds without movement, and turns
+  // into a pointing hand while the mouse button is held on the glass.
   let idleTimer = 0;
   function poke() {
     document.body.classList.remove('idle');
     clearTimeout(idleTimer);
-    idleTimer = setTimeout(function () { document.body.classList.add('idle'); }, 3500);
+    idleTimer = setTimeout(function () { document.body.classList.add('idle'); }, 5000);
   }
   ['pointermove', 'pointerdown', 'keydown'].forEach(function (e) { window.addEventListener(e, poke, { passive: true }); });
+  window.addEventListener('pointerdown', function () { document.body.classList.add('pressing'); }, { passive: true });
+  ['pointerup', 'pointercancel', 'blur'].forEach(function (e) {
+    window.addEventListener(e, function () { document.body.classList.remove('pressing'); }, { passive: true });
+  });
 
   /* ---------------------------- Sound --------------------------------- */
   // Sound is on by default. Browsers hold it back until the first tap,
   // click or key press; until then the sound ring breathes softly.
-  const knobSound = $('knob-sound');
   function updateSoundKnob() {
     knobSound.classList.toggle('is-waiting', audio.isBlocked());
     knobSound.classList.toggle('is-muted', audio.muted);
+    const verb = audio.muted ? 'unmute' : 'mute';
+    knobSound.title = audio.muted ? 'Unmute' : 'Mute';
+    knobSound.setAttribute('aria-label', 'Sound (click to ' + verb + ')');
+    if (soundHint) soundHint.textContent = (hoverable ? 'Click' : 'Tap') + ' the speaker to ' + verb + '.';
   }
+  // A press that was needed to let sound start shouldn't also mute it.
+  let gestureStartedSound = false;
+  window.addEventListener('pointerdown', function () { gestureStartedSound = audio.isBlocked(); }, { passive: true, capture: true });
   ['pointerdown', 'pointerup', 'touchend', 'keydown', 'click'].forEach(function (e) {
     window.addEventListener(e, function () {
       audio.start();
@@ -618,7 +666,7 @@
     switch (e.key.toLowerCase()) {
       case 's': setPanel(!panel.classList.contains('is-open')); break;
       case 'escape': setPanel(false); closePops(); break;
-      case 'm': audio.setMuted(!audio.muted); updateSoundKnob(); break;
+      case 'm': set('muted', !settings.muted); break;
       case 'f': toggleFullscreen(); break;
       case 'h': document.body.classList.toggle('ui-hidden'); break;
       case ' ':
@@ -642,6 +690,7 @@
   audio.setMusic(settings.music);
   audio.setRainSound(settings.rainSound);
   audio.setIntensity(settings.intensity / 100, true);
+  audio.setMuted(settings.muted);
   applyVolumes();
   audio.start();
   updateSoundKnob();

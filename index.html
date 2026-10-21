@@ -29,7 +29,7 @@
       <div id="pop-rain" class="pop" role="group" aria-label="Rain and view"></div>
     </div>
     <div class="knob-wrap" id="wrap-sound">
-      <button id="knob-sound" class="knob" type="button" aria-label="Sound" aria-expanded="false" aria-controls="pop-sound">
+      <button id="knob-sound" class="knob" type="button" aria-label="Sound (click to mute)" title="Mute" aria-expanded="false" aria-controls="pop-sound">
         <svg class="i-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.6L12 18.6V5.4L7.6 9.5H4z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
         <svg class="i-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.6L12 18.6V5.4L7.6 9.5H4z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M15.5 9.5l5 5M20.5 9.5l-5 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
       </button>
@@ -57,6 +57,12 @@
       </button>
     </header>
     <div id="panel-body" class="panel__body"></div>
+    <footer class="panel__foot">
+      <button id="btn-back" class="back" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Back
+      </button>
+    </footer>
   </aside>
 
   <div id="fallback" class="fallback" hidden>

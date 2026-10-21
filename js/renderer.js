@@ -51,6 +51,7 @@
     'uniform float uLightning;',
     'uniform float uRain;',
     'uniform float uBrightness;',
+    'uniform float uWaterAmt;',
     'uniform float uBokeh;',
     'uniform float uLightCount;',
     'uniform vec4 uLightPos[' + MAX_LIGHTS + '];',
@@ -132,7 +133,7 @@
     '  float hd = texture2D(uWater, uv + vec2(0.0, e.y)).a;',
     '  vec2 slope = vec2(hr - hl, hd - hu) * (0.5 / 1.5) * uHeightScale;',
     '  vec3 n = normalize(vec3(-slope, 1.0));',
-    '  float mask = smoothstep(3.5 / 255.0, 9.0 / 255.0, h);',
+    '  float mask = smoothstep(3.5 / 255.0, 9.0 / 255.0, h) * uWaterAmt;',
     '',
     // ---- Glass between the drops: blurred scene, rain, fog.
     '  vec3 bg = texture2D(uBgBlur, uv).rgb * 1.15;',
@@ -369,6 +370,7 @@
     gl.uniform1f(m.u.uLightning, st.lightning);
     gl.uniform1f(m.u.uRain, st.rain);
     gl.uniform1f(m.u.uBrightness, st.brightness);
+    gl.uniform1f(m.u.uWaterAmt, st.waterAmt === undefined ? 1 : st.waterAmt);
     gl.uniform1f(m.u.uBokeh, this.blurAmount);
     const count = Math.min(MAX_LIGHTS, st.lights.count);
     gl.uniform1f(m.u.uLightCount, count);
