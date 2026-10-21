@@ -1,6 +1,6 @@
 # Rainy Window
 
-A realistic rain-on-the-window simulation for the browser, with ambient rain sounds, thunder and calming generative music.
+A realistic rain-on-the-window simulation for the browser, with ambient rain sounds, thunder and calming music. (improved physics version of one of my previous projects)
 
 ## Run it
 
