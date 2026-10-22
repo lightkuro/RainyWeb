@@ -16,7 +16,7 @@
   const DEFAULTS = {
     scene: 'photo',
     intensity: 55,
-    fog: 30,
+    fog: 50,
     drops: 100,         // water on the glass: 0 off, 50 low, 100 normal
     storm: 6,
     dropSize: 100,
@@ -50,7 +50,12 @@
   function load() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) return Object.assign({}, DEFAULTS, JSON.parse(raw));
+      if (raw) {
+        const saved = JSON.parse(raw);
+        // Fog's default moved from Low to Medium.
+        if (!saved.rev && saved.fog === 30) saved.fog = DEFAULTS.fog;
+        return Object.assign({}, DEFAULTS, saved, { rev: 5 });
+      }
       // Carry choices over from the previous version, with the new defaults
       // for wood grain and fog.
       const old = localStorage.getItem(OLD_KEY);

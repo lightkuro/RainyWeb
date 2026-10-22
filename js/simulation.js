@@ -229,7 +229,7 @@
     const mc = this.mctx;
 
     // --- New rain landing on the glass -------------------------------
-    this.rainAcc += Math.pow(s.intensity, 1.4) * 4.2 * area * dt;
+    this.rainAcc += Math.pow(s.intensity, 1.4) * 3 * area * dt;
     while (this.rainAcc >= 1) {
       this.rainAcc -= 1;
       this.spawnDrop(s, Math.random() * this.W, Math.random() * this.H * 1.05 - this.H * 0.05);
@@ -237,7 +237,8 @@
 
     // --- Condensation / fine spray -----------------------------------
     mc.globalCompositeOperation = 'lighter';
-    this.mistAcc += s.condensation * (0.25 + s.intensity) * 16 * area * dt;
+    // Fewer, longer-lived droplets: calmer than many that come and go.
+    this.mistAcc += s.condensation * (0.25 + s.intensity) * 5 * area * dt;
     while (this.mistAcc >= 1) {
       this.mistAcc -= 1;
       this.addMist(Math.random() * this.W, Math.random() * this.H, s);
@@ -247,10 +248,10 @@
     // Evaporation: the condensation layer thins out in small, frequent steps
     // so droplets fade away rather than blinking out.
     this.evapTimer += dtMs;
-    if (this.evapTimer > 400) {
+    if (this.evapTimer > 2000) {
       this.evapTimer = 0;
       mc.globalCompositeOperation = 'destination-out';
-      mc.fillStyle = 'rgba(0,0,0,' + (0.035 + (1 - s.condensation) * 0.05) + ')';
+      mc.fillStyle = 'rgba(0,0,0,' + (0.04 + (1 - s.condensation) * 0.03) + ')';
       mc.fillRect(0, 0, this.W, this.H);
     }
 
@@ -293,12 +294,12 @@
       if (!d.moving) {
         if (d.fading) {
           // Evaporating: shrink away smoothly, leaving a breath of mist.
-          d.r *= Math.pow(0.99, dt);
+          d.r *= Math.pow(0.997, dt);
           if (d.vr < 0.3 * k) { this.fogPuff(d.x, d.y, k); d.dead = true; }
           continue;
         }
         // Tiny amount of evaporation on still water.
-        d.r -= 0.0006 * k * dt;
+        d.r -= 0.00015 * k * dt;
         if (d.r < 0.8 * k) { d.fading = true; continue; }
         if (d.r > d.thr) {
           d.moving = true;
@@ -363,7 +364,7 @@
     this.collide(k);
 
     // Compact the array and keep the total count bounded.
-    const maxDrops = Math.max(400, Math.min(3000, Math.round(1500 * area)));
+    const maxDrops = Math.max(600, Math.min(4000, Math.round(2500 * area)));
     const alive = drops.filter(function (d) { return !d.dead; });
     let active = 0;
     for (let i = 0; i < alive.length; i++) if (!alive[i].fading && !alive[i].into) active++;
