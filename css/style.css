@@ -164,19 +164,6 @@ body.frame-hot .knob svg, .knob:focus-visible svg, .knob[aria-expanded="true"] s
   #knob-sound.is-muted:hover .i-on { display: block; }
   #knob-sound:hover svg { opacity: 0.65 !important; }
 }
-/* Sound is waiting for a first tap: breathe gently. */
-#knob-sound.is-waiting::after {
-  content: "";
-  position: absolute;
-  inset: -5px;
-  border-radius: 50%;
-  border: 1px solid var(--ring-hot);
-  animation: breathe 2.4s ease-in-out infinite;
-}
-@keyframes breathe {
-  0%, 100% { opacity: 0; transform: scale(0.9); }
-  50% { opacity: 0.8; transform: scale(1.05); }
-}
 /* Touch screens have no hover: show the icons softly. */
 @media (hover: none) {
   .knob svg { opacity: 0.6; transform: none; }
@@ -500,5 +487,4 @@ body.ui-hidden .panel { transform: translateX(calc(100% + 40px)); }
 
 @media (prefers-reduced-motion: reduce) {
   .panel, .pop, .intro, .knob svg { transition: none; }
-  #knob-sound.is-waiting::after { animation: none; opacity: 0.6; }
 }

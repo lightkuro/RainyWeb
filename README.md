@@ -9,7 +9,7 @@ It's a static site with no build step and no dependencies:
 - Serve the folder: `python3 -m http.server`, then visit <http://localhost:8000>, **or**
 - Open `index.html` directly in a browser.
 
-Sound is on by default and fades in gently. Browsers only allow a page to play sound after you interact with it, so if it's silent at first, tap or click anywhere. The sound ring in the window frame gently pulses while it's waiting for that tap.
+Sound is on by default and fades in gently. Browsers only allow a page to play sound after you interact with it, so if it's silent at first, tap or click anywhere. The sound ring in the window frame won't make a sound until then.
 
 ## What's simulated
 
@@ -23,9 +23,9 @@ Sound is on by default and fades in gently. Browsers only allow a page to play s
 
 Three rings sit in the bottom-right of the window frame. Their icons appear when the pointer is over the frame.
 
-- **Rain** (drop icon): what's outside, rain, lightning, brightness, background blur, and switches for window fog and window drops.
+- **Rain** (drop icon): what's outside, rain, lightning, brightness, background blur, window fog (Clear, Low, Medium, High) and window drops (Off, Low, Normal).
 - **Sound** (speaker icon): hover to choose the music (two recorded rain tracks, generated ambient piano, or none), set the volume and switch rain sounds on or off. Click the speaker to mute or unmute. On a phone, tap once to open it and tap again to mute. The recorded tracks already have rain in them, so choosing one switches the rain sounds off. You can switch them back on.
-- **Settings** (gear icon): quality, frame colour (classic, oak, teak, walnut, mahogany or black) with optional wood grain, fullscreen, pause, rain intensity, window fog, background blur, brightness and separate sound levels. **Advanced settings** adds drop size, condensation, refraction and lightning frequency.
+- **Settings** (gear icon): quality, frame colour (classic, oak, teak, walnut, mahogany or black) with a wood grain switch, fullscreen, pause, rain intensity, window fog, background blur, brightness and separate sound levels. **Advanced settings** adds drop size, condensation, refraction and lightning frequency.
 
 On the glass, **tap** to add a drop and **press and drag** to wipe it. Keys: `S` settings, `M` mute, `F` fullscreen, `Space` pause, `H` hide the controls.
 

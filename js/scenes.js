@@ -2,7 +2,7 @@
  * Procedurally painted scenery that sits behind the glass.
  *
  * Each scene paints a static backdrop onto a 2D canvas and describes a set of
- * animated light sources (car lights, boat lights, a lighthouse...) that the
+ * animated light sources (car lights, boat lights...) that the
  * WebGL renderer draws on top, so the view outside the window feels alive.
  */
 (function (global) {
@@ -451,10 +451,10 @@
       reflection(ctx, x, pierY + 50 * u, h, 20 * u, '#ffb070', 0.35, rnd);
     }
     ctx.globalCompositeOperation = 'source-over';
-    return { lighthouse: [lhX / w, (lhBase - 119 * u) / h] };
+    return {};
   }
 
-  function harborLights(meta) {
+  function harborLights() {
     const boats = [];
     for (let i = 0; i < 4; i++) {
       boats.push({
@@ -465,9 +465,8 @@
         side: Math.random() < 0.5 ? [1, 0.12, 0.1] : [0.2, 1, 0.45]
       });
     }
-    const lh = meta.lighthouse || [0.86, 0.43];
     return {
-      count: boats.length * 2 + 1,
+      count: boats.length * 2,
       update: function (t, aspect, pos, col) {
         let k = 0;
         function put(x, y, size, gain, c) {
@@ -483,10 +482,6 @@
           put(x, b.y - 0.035 * scale + bob, 0.012 + 0.006 * scale, 0.7, [1, 0.93, 0.78]);
           put(x + 0.01 * scale, b.y + bob * 1.2, 0.01 + 0.005 * scale, 0.75, b.side);
         });
-        // Rotating lighthouse beam: a bright pulse every ~7 seconds.
-        const phase = (t / 7) % 1;
-        const beam = Math.pow(Math.max(0, Math.cos(phase * Math.PI * 2)), 18);
-        put(lh[0], lh[1], 0.018 + beam * 0.04, 0.15 + beam * 1.4, [1, 0.95, 0.82]);
       }
     };
   }

@@ -5,7 +5,8 @@
 (function () {
   'use strict';
 
-  const STORAGE_KEY = 'rainy-window.settings.v3';
+  const STORAGE_KEY = 'rainy-window.settings.v4';
+  const OLD_KEY = 'rainy-window.settings.v3';
 
   const TRACKS = {
     track1: 'assets/music/rain-music1.mp3',
@@ -15,9 +16,8 @@
   const DEFAULTS = {
     scene: 'photo',
     intensity: 55,
-    fog: 35,
-    fogOn: true,
-    dropsOn: true,
+    fog: 30,
+    drops: 100,         // water on the glass: 0 off, 50 low, 100 normal
     storm: 6,
     dropSize: 100,
     condensation: 60,
@@ -33,7 +33,7 @@
     musicVol: 65,
     thunderVol: 40,
     wood: 'classic',
-    grain: false,
+    grain: true,
     advanced: false
   };
 
@@ -51,6 +51,17 @@
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) return Object.assign({}, DEFAULTS, JSON.parse(raw));
+      // Carry choices over from the previous version, with the new defaults
+      // for wood grain and fog.
+      const old = localStorage.getItem(OLD_KEY);
+      if (old) {
+        const o = JSON.parse(old);
+        const fog = o.fogOn === false ? 0 : DEFAULTS.fog;
+        const drops = o.dropsOn === false ? 0 : DEFAULTS.drops;
+        delete o.fogOn;
+        delete o.dropsOn;
+        return Object.assign({}, DEFAULTS, o, { grain: true, fog: fog, drops: drops });
+      }
     } catch (e) { /* storage unavailable */ }
     return Object.assign({}, DEFAULTS);
   }
@@ -87,6 +98,15 @@
     };
   }
 
+  // The same, with "Window drops" applied to how much water reaches the glass.
+  function glassSettings() {
+    const ss = simSettings();
+    const f = settings.drops / 100;
+    ss.intensity *= f;
+    ss.condensation *= f;
+    return ss;
+  }
+
   /* ---------------------------- Layout -------------------------------- */
   let cssW = 0, cssH = 0;
   function resize(force) {
@@ -103,7 +123,7 @@
     let waterScale = q.water;
     const maxWater = 2200 * 1300;
     if (w * h * waterScale * waterScale > maxWater) waterScale = Math.sqrt(maxWater / (w * h));
-    sim.resize(w, h, waterScale, simSettings());
+    sim.resize(w, h, waterScale, glassSettings());
     paintScene();
   }
 
@@ -174,10 +194,14 @@
     const dt = Math.min(100, now - last);
     last = now;
     const ss = simSettings();
-    // "Window drops" off: the glass dries quickly and nothing new lands.
-    waterAmt += ((settings.dropsOn ? 1 : 0) - waterAmt) * Math.min(1, dt / 250);
+    // "Window drops": Low lets less water land on the glass; Off dries it
+    // quickly and nothing new lands.
+    const dropsF = settings.drops / 100;
+    waterAmt += ((dropsF > 0 ? 1 : 0) - waterAmt) * Math.min(1, dt / 250);
     if (!paused) {
-      if (settings.dropsOn || waterAmt > 0.01) sim.update(dt, settings.dropsOn ? ss : Object.assign({}, ss, { intensity: 0, condensation: 0 }));
+      if (dropsF > 0 || waterAmt > 0.01) {
+        sim.update(dt, glassSettings());
+      }
       sceneTime += dt / 1000;
     }
     sim.draw(ss);
@@ -188,7 +212,7 @@
       time: sceneTime,
       refract: 0.25 + (settings.refraction / 100) * 1.5,
       heightScale: sim.rrefPx(ss),
-      fogAmt: settings.fogOn ? settings.fog / 100 : 0,
+      fogAmt: settings.fog / 100,
       waterAmt: waterAmt,
       lightning: lightningLevel(now) * 0.9,
       rain: settings.intensity / 100,
@@ -359,8 +383,8 @@
     const colB = el('div', 'pop__col');
     colB.appendChild(seg('brightness', 'Brightness', [['Dark', 60], ['Low', 75], ['Normal', 90], ['Bright', 100]]));
     colB.appendChild(seg('blur', 'Background blur', [['Clear', 0], ['Normal', 10], ['Distant', 60]]));
-    colB.appendChild(toggle('fogOn', 'Window fog'));
-    colB.appendChild(toggle('dropsOn', 'Window drops'));
+    colB.appendChild(seg('fog', 'Window fog', [['Clear', 0], ['Low', 30], ['Medium', 50], ['High', 95]]));
+    colB.appendChild(seg('drops', 'Window drops', [['Off', 0], ['Low', 45], ['Normal', 100]]));
     rainPop.appendChild(colA);
     rainPop.appendChild(colB);
 
@@ -606,9 +630,8 @@
 
   /* ---------------------------- Sound --------------------------------- */
   // Sound is on by default. Browsers hold it back until the first tap,
-  // click or key press; until then the sound ring breathes softly.
+  // click or key press.
   function updateSoundKnob() {
-    knobSound.classList.toggle('is-waiting', audio.isBlocked());
     knobSound.classList.toggle('is-muted', audio.muted);
     const verb = audio.muted ? 'unmute' : 'mute';
     knobSound.title = audio.muted ? 'Unmute' : 'Mute';
