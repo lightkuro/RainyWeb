@@ -9,7 +9,7 @@ It's a static site with no build step and no dependencies:
 - Serve the folder: `python3 -m http.server`, then visit <http://localhost:8000>, **or**
 - Open `index.html` directly in a browser.
 
-Sound is on by default and fades in gently. Browsers only allow a page to play sound after you interact with it, so if it's silent at first, tap or click anywhere. The sound ring in the window frame won't make a sound until then.
+Sound is on by default and fades in gently. Browsers only allow a page to play sound after you interact with it, so if it's silent at first, tap or click anywhere.
 
 ## What's simulated
 
