@@ -44,7 +44,7 @@
     high: { water: 1, dpr: 2 }
   };
 
-  const WOODS = [['classic', 'Classic'], ['oak', 'Oak'], ['teak', 'Teak'], ['walnut', 'Walnut'], ['mahogany', 'Mahogany'], ['black', 'Black']];
+  const WOODS = [['classic', 'Classic'], ['oak', 'Oak'], ['teak', 'Teak'], ['walnut', 'Walnut'], ['mahogany', 'Mahogany']];
 
   function pct(v) { return v + '%'; }
 
@@ -87,6 +87,7 @@
 
   let settings = load();
   if (!QUALITY[settings.quality]) settings.quality = DEFAULTS.quality;
+  if (!WOODS.some(function (w) { return w[0] === settings.wood; })) settings.wood = DEFAULTS.wood;
   if (!Scenes.list.some(function (s) { return s.id === settings.scene; })) settings.scene = DEFAULTS.scene;
 
   const $ = function (id) { return document.getElementById(id); };
@@ -339,13 +340,6 @@
     return wrap;
   }
 
-  // An on/off switch for a numeric setting: off is 0, on is `onValue`.
-  function toggleLevel(key, label, onValue) {
-    const t = toggle(null, label, function () { return settings[key] > 0; },
-      function (on) { set(key, on ? (settings[key] > 0 ? settings[key] : onValue) : 0); });
-    return t;
-  }
-
   function toggle(key, label, get, put) {
     const id = 'ctl-' + key + '-' + (uid++);
     const wrap = el('div', 'ctl ctl--inline');
@@ -416,6 +410,31 @@
   const ICON_TAP = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" fill="currentColor"/><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="1.4" opacity="0.5"/></svg>';
   const ICON_SWIPE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 15C6 7 12 6.5 16 11.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity="0.8"/><circle cx="18.5" cy="14" r="2.6" fill="currentColor"/></svg>';
 
+  // Small icons after the labels in the rain and sound popovers.
+  function svgIcon(body) {
+    return '<svg class="lbl-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + body + '</svg>';
+  }
+  const LABEL_ICONS = {
+    'Scene': svgIcon('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/>'),
+    'Rain': svgIcon('<path d="M7 14h9.5a3.5 3.5 0 0 0 .4-6.98A5 5 0 0 0 7.3 8.1 3 3 0 0 0 7 14z"/><path d="M8.6 17.5l-.9 2.2M12.4 17.5l-.9 2.2M16.2 17.5l-.9 2.2"/>'),
+    'Lightning': svgIcon('<path d="M13 3L6 13.5h5L10 21l7-10.5h-5z"/>'),
+    'Frame': svgIcon('<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M12 3v18M4 12h16"/>'),
+    'Brightness': svgIcon('<circle cx="12" cy="12" r="3.5"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/>'),
+    'Background blur': svgIcon('<circle cx="7" cy="12" r="3"/><circle cx="15" cy="12" r="2" opacity="0.7"/><circle cx="20" cy="12" r="1.2" opacity="0.45"/>'),
+    'Window fog': svgIcon('<path d="M3 8c3-2 6 2 9 0s6 2 9 0M3 12.5c3-2 6 2 9 0s6 2 9 0M3 17c3-2 6 2 9 0s6 2 9 0"/>'),
+    'Window drops': svgIcon('<path d="M12 3.5c-2.6 3.3-5.5 6.6-5.5 9.6a5.5 5.5 0 0 0 11 0c0-3-2.9-6.3-5.5-9.6z"/>'),
+    'Music': svgIcon('<path d="M9 18V5.5l10-2V16"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>'),
+    'Music volume': svgIcon('<path d="M8 17V6l7-1.5"/><circle cx="5.5" cy="17" r="2.5"/><path d="M17 10a3 3 0 0 1 0 5M19.5 7.5a6.5 6.5 0 0 1 0 10"/>'),
+    'Rain volume': svgIcon('<path d="M8 4.5c-1.9 2.4-4 4.8-4 7a4 4 0 0 0 8 0c0-2.2-2.1-4.6-4-7z"/><path d="M15.5 9.5a3 3 0 0 1 0 5M18 7a6.5 6.5 0 0 1 0 10"/>'),
+    'Volume': svgIcon('<path d="M4 9.5v5h3.6L12 18.6V5.4L7.6 9.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6"/>')
+  };
+  function addLabelIcons(root) {
+    root.querySelectorAll('.ctl__label > label, .ctl__label > span:first-child').forEach(function (l) {
+      const icon = LABEL_ICONS[l.textContent];
+      if (icon) l.insertAdjacentHTML('beforeend', icon);
+    });
+  }
+
   const LEVELS = {
     music: [['Off', 0], ['Low', 28], ['Normal', 52], ['Higher', 80]],
     rain: [['Off', 0], ['Low', 25], ['Normal', 50], ['Higher', 80]]
@@ -483,6 +502,8 @@
       function () { return settings.rainSound ? Math.max(1, nearest(LEVELS.rain, settings.rainVol)) : 0; }));
     soundPop.appendChild(rainLv);
     soundPop.appendChild(volumeRow());
+    addLabelIcons(rainPop);
+    addLabelIcons(soundPop);
 
     // Scene switcher in the sill, shown while the pointer is on it.
     const bar = $('scene-bar');
@@ -501,8 +522,6 @@
     body.appendChild(section('', [
       seg('quality', 'Quality', [['Low', 'low'], ['Medium', 'medium'], ['High', 'high']]),
       woodPicker(),
-      toggle('grain', 'Wood grain'),
-      toggleLevel('storm', 'Lightning & thunder', 6),
       (function () { const r = el('div', 'row'); r.appendChild(button('Fullscreen', toggleFullscreen)); r.appendChild(pauseBtn); return r; })()
     ]));
     body.appendChild(group('View', [
@@ -514,12 +533,13 @@
     body.appendChild(group('Sound levels', [
       range('musicVol', 'Music', 0, 100),
       range('rainVol', 'Rain volume', 0, 100),
-      range('thunderVol', 'Thunder', 0, 100)
+      range('thunderVol', 'Thunder volume', 0, 100)
     ]));
     body.appendChild(toggle('advanced', 'Advanced settings'));
 
     const adv = el('div', 'advanced');
     adv.appendChild(section('', [
+      toggle('grain', 'Wood grain'),
       range('dropSize', 'Drop size', 50, 200),
       range('condensation', 'Condensation', 0, 100),
       range('refraction', 'Refraction', 0, 100),

@@ -23,12 +23,11 @@
   --w-dark: #2a1c13;
 }
 
-/* Frame presets: the classic dark frame, four woods and a painted black. */
+/* Frame presets: the classic dark frame and four woods. */
 [data-wood="oak"]      { --w-light: #a3804f; --w-mid: #85663d; --w-dark: #644a2a; }
 [data-wood="teak"]     { --w-light: #8a5a33; --w-mid: #6d4424; --w-dark: #4e2f17; }
 [data-wood="walnut"]   { --w-light: #5a3f2b; --w-mid: #3f2b1e; --w-dark: #2a1c13; }
 [data-wood="mahogany"] { --w-light: #77352a; --w-mid: #5a241b; --w-dark: #3d1610; }
-[data-wood="black"]    { --w-light: #2a2a2a; --w-mid: #191919; --w-dark: #0d0d0d; }
 
 * { box-sizing: border-box; }
 
@@ -414,6 +413,8 @@ kbd {
   align-items: baseline;
   font-size: 0.86rem;
 }
+.ctl__label label { display: inline-flex; align-items: center; gap: 7px; }
+.lbl-icon { width: 15px; height: 15px; flex: none; color: var(--muted); }
 .ctl__val { color: var(--muted); font-size: 0.78rem; font-variant-numeric: tabular-nums; }
 .ctl--inline { flex-direction: row; justify-content: space-between; align-items: center; }
 

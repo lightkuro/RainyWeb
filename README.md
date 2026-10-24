@@ -25,7 +25,7 @@ Three rings sit in the bottom-right of the window frame. Their icons appear when
 
 - **Rain** (cloud icon): scene, rain, lightning (off by default), frame style (Frameless, Clean with only the sill, the default, or Framed), brightness, background blur, window fog (Clear, Low, Medium, High) and window drops (Off, Low, Normal).
 - **Sound** (speaker icon): hover to choose the music (two recorded rain tracks, generated ambient piano, or none), set the music volume and rain volume (Off, Low, Normal, Higher), and the volume, with a mute button beside it. Click the speaker to mute or unmute. On a phone, tap once to open it and tap again to mute. The recorded tracks already have rain in them, so choosing one turns the rain volume down to Low. On phones, sound stops when you leave the browser or lock the screen.
-- **Settings** (gear icon): quality (Low, Medium, High), frame colour (classic, oak, teak, walnut, mahogany or black) with a wood grain switch, a lightning & thunder switch, fullscreen, pause, and folding View (rain intensity, window fog, background blur, brightness) and Sound levels groups. **Advanced settings** adds drop size, condensation, refraction and lightning frequency.
+- **Settings** (gear icon): quality (Low, Medium, High), frame colour (classic, oak, teak, walnut or mahogany), fullscreen, pause, and folding View (rain intensity, window fog, background blur, brightness) and Sound levels (music, rain and thunder volume) groups. **Advanced settings** adds a wood grain switch, drop size, condensation, refraction and lightning frequency.
 
 On the glass, **tap** to add a drop, **hold** to grow a bigger one, and **press and drag** to wipe it. Keys: `S` settings, `M` mute, `F` fullscreen, `Space` pause, `H` hide the controls.
 
