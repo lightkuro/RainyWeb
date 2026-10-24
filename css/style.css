@@ -488,3 +488,20 @@ body.ui-hidden .panel { transform: translateX(calc(100% + 40px)); }
 @media (prefers-reduced-motion: reduce) {
   .panel, .pop, .intro, .knob svg { transition: none; }
 }
+
+/* ---------- Home link ---------- */
+.brand {
+  position: fixed;
+  top: calc(var(--fw) + 12px);
+  left: calc(var(--fw) + 14px);
+  z-index: 10;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: #fff;
+  opacity: 0.28;
+  text-decoration: none;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+  transition: opacity 0.4s ease;
+}
+.brand:hover, .brand:focus-visible { opacity: 0.75; }
