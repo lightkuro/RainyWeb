@@ -880,10 +880,5 @@
   // The title drifts away on its own.
   setTimeout(function () { intro.classList.add('is-hidden'); }, 2600);
   setTimeout(function () { intro.hidden = true; }, 5000);
-  // Then a hint at the bottom of the window, for eight seconds.
-  const hint = $('hint');
-  setTimeout(function () { hint.classList.add('is-shown'); }, 4400);
-  setTimeout(function () { hint.classList.remove('is-shown'); }, 12400);
-  setTimeout(function () { hint.hidden = true; }, 14000);
   requestAnimationFrame(function (t) { last = t; frame(t); });
 })();
