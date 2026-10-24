@@ -12,8 +12,9 @@
   --ring-hot: rgba(255, 236, 210, 0.7);
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-  --fw: clamp(12px, 2.1vw, 34px);       /* frame width */
-  --sill: max(calc(var(--fw) * 1.9), 50px); /* bottom rail that holds the controls */
+  --fw0: clamp(12px, 2.1vw, 34px);
+  --fw: var(--fw0);                     /* frame width */
+  --sill: max(calc(var(--fw0) * 1.9), 50px); /* bottom rail that holds the controls */
   --knob: clamp(30px, 4.2vh, 36px);
 
   /* Wood (overridden per preset on .frame and .knobs) */
@@ -57,6 +58,12 @@ body.pressing #view { cursor: pointer; }
 body.idle, body.idle * { cursor: none !important; }
 
 /* ---------- Window frame ---------- */
+/* Frame styles: Clean keeps only the sill; Frameless shows bare glass. */
+body[data-frame="clean"] { --fw: 0px; }
+body[data-frame="none"] { --fw: 0px; --sill: 0px; }
+body[data-frame="none"] .frame { display: none; }
+body[data-frame="clean"] .frame > div:not(.frame__sill) { display: none; }
+
 .frame { position: fixed; inset: 0; pointer-events: none; }
 .frame > div { position: absolute; }
 .frame__top { top: 0; left: 0; right: 0; height: var(--fw); }
@@ -115,7 +122,7 @@ body.idle, body.idle * { cursor: none !important; }
 .knobs {
   position: fixed;
   right: calc(var(--fw) + 14px);
-  bottom: calc((var(--sill) - var(--knob)) / 2);
+  bottom: max(calc((var(--sill) - var(--knob)) / 2), 14px);
   display: flex;
   gap: clamp(14px, 2vw, 22px);
   z-index: 10;
@@ -141,8 +148,8 @@ body.ui-hidden .knobs { opacity: 0; pointer-events: none; }
 .knob svg {
   width: 58%;
   height: 58%;
-  opacity: 0;
-  transform: scale(0.75);
+  opacity: 0.16;
+  transform: scale(0.8);
   transition: opacity 0.35s ease, transform 0.35s ease;
 }
 /* Icons appear when the pointer is on the frame. */
@@ -150,12 +157,14 @@ body.frame-hot .knob svg, .knob:focus-visible svg, .knob[aria-expanded="true"] s
   opacity: 0.9;
   transform: none;
 }
-.knob:hover, .knob[aria-expanded="true"] { border-color: var(--ring-hot); background: rgba(0, 0, 0, 0.18); }
+.knob[aria-expanded="true"] { border-color: var(--ring-hot); background: rgba(0, 0, 0, 0.18); }
+@media (hover: hover) {
+  .knob:hover { border-color: var(--ring-hot); background: rgba(0, 0, 0, 0.18); }
+}
 .knob:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 #knob-sound .i-off { display: none; }
 #knob-sound.is-muted .i-on { display: none; }
 #knob-sound.is-muted .i-off { display: block; }
-#knob-sound.is-muted { border-color: rgba(255, 236, 210, 0.18); }
 /* Hovering the speaker previews what a click will do: mute or unmute. */
 @media (hover: hover) {
   #knob-sound:hover:not(.is-muted) .i-on { display: none; }
@@ -206,6 +215,59 @@ body.frame-hot .knob svg, .knob:focus-visible svg, .knob[aria-expanded="true"] s
   .pop--wide { grid-template-columns: 1fr; }
 }
 .pop__hint { margin: 0; color: var(--muted); font-size: 0.75rem; }
+
+/* Volume with a mute button at its end. */
+.vol-line { display: flex; align-items: center; gap: 10px; }
+.mute {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--panel-line);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+}
+.mute svg { width: 18px; height: 18px; }
+.mute .i-off, .mute.is-muted .i-on { display: none; }
+.mute.is-muted .i-off { display: block; }
+.mute.is-muted { color: var(--accent); }
+.mute:hover { background: rgba(255, 255, 255, 0.12); }
+.mute:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- Scene switcher in the sill ---------- */
+.scene-bar {
+  position: fixed;
+  left: 50%;
+  bottom: max(calc((var(--sill) - 32px) / 2), 14px);
+  transform: translateX(-50%) translateY(4px);
+  z-index: 10;
+  width: min(270px, calc(100vw - 2 * var(--fw) - 220px));
+  min-width: 190px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+body.sill-hot .scene-bar, .scene-bar:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%);
+}
+body.ui-hidden .scene-bar { opacity: 0; pointer-events: none; }
+.scene-bar .seg {
+  background: rgba(10, 8, 6, 0.55);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+.scene-bar .seg button { font-size: 0.76rem; padding: 5px 4px; }
+/* Phones: sit at the left so the knobs keep their room. */
+@media (max-width: 520px) {
+  .scene-bar { left: calc(var(--fw) + 12px); transform: translateY(4px); width: calc(100vw - 2 * var(--fw) - 190px); min-width: 150px; }
+  body.sill-hot .scene-bar, .scene-bar:focus-within { transform: none; }
+}
 
 /* ---------- Panel ---------- */
 .panel {
@@ -496,7 +558,7 @@ body.ui-hidden .panel { transform: translateX(calc(100% + 40px)); }
   left: calc(var(--fw) + 14px);
   z-index: 10;
   font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
+  font-size: clamp(13px, 1.05vw, 26px);
   letter-spacing: 0.06em;
   color: #fff;
   opacity: 0.28;

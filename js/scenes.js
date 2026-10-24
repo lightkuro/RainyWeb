@@ -518,9 +518,9 @@
   const noLights = function () { return { count: 0, update: function () {} }; };
 
   const SCENES = {
-    photo: { name: 'Sunlit forest', paint: paintPhoto, lights: noLights },
+    photo: { name: 'Misty forest', paint: paintPhoto, lights: noLights },
     city: { name: 'City at night', paint: paintCity, lights: cityLights },
-    forest: { name: 'Misty forest', paint: paintForest, lights: noLights },
+    forest: { name: 'Snow woods', paint: paintForest, lights: noLights },
     harbor: { name: 'Harbor at dusk', paint: paintHarbor, lights: harborLights }
   };
 

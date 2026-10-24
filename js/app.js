@@ -18,7 +18,7 @@
     intensity: 55,
     fog: 50,
     drops: 100,         // water on the glass: 0 off, 50 low, 100 normal
-    storm: 6,
+    storm: 0,
     dropSize: 100,
     condensation: 60,
     blur: 10,
@@ -34,6 +34,7 @@
     thunderVol: 40,
     wood: 'classic',
     grain: true,
+    frame: 'framed',    // 'none', 'clean' (sill only) or 'framed'
     advanced: false
   };
 
@@ -54,7 +55,9 @@
         const saved = JSON.parse(raw);
         // Fog's default moved from Low to Medium.
         if (!saved.rev && saved.fog === 30) saved.fog = DEFAULTS.fog;
-        return Object.assign({}, DEFAULTS, saved, { rev: 5 });
+        // Lightning's default moved from Mild to Off.
+        if ((saved.rev || 0) < 6 && saved.storm === 6) saved.storm = DEFAULTS.storm;
+        return Object.assign({}, DEFAULTS, saved, { rev: 6 });
       }
       // Carry choices over from the previous version, with the new defaults
       // for wood grain and fog.
@@ -249,31 +252,42 @@
     return row;
   }
 
-  // A row of named choices that each set a value (e.g. Off / Light / Heavy).
-  // The choice nearest the current value lights up.
-  function seg(key, label, options) {
-    const wrap = el('div', 'ctl');
-    const head = labelRow(label);
-    wrap.appendChild(head);
+  // A row of named choices (e.g. Off / Light / Heavy). `pick` runs when one
+  // is chosen; `current` returns the index of the one to light up.
+  function choices(label, names, pick, current) {
     const group = el('div', 'seg');
     group.setAttribute('role', 'group');
     group.setAttribute('aria-label', label);
-    const buttons = options.map(function (o) {
-      const b = el('button', '', o[0]);
+    const buttons = names.map(function (n, i) {
+      const b = el('button', '', n);
       b.type = 'button';
-      b.addEventListener('click', function () { set(key, o[1]); });
+      b.addEventListener('click', function () { pick(i); });
       group.appendChild(b);
       return b;
     });
-    wrap.appendChild(group);
     refreshers.push(function () {
-      let best = 0;
-      options.forEach(function (o, i) {
-        if (Math.abs(o[1] - settings[key]) < Math.abs(options[best][1] - settings[key])) best = i;
-      });
-      buttons.forEach(function (b, i) { b.setAttribute('aria-pressed', String(i === best)); });
+      const on = current();
+      buttons.forEach(function (b, i) { b.setAttribute('aria-pressed', String(i === on)); });
     });
+    return group;
+  }
+
+  // Choices that each set one value. A number lights up the nearest choice.
+  function seg(key, label, options) {
+    const wrap = el('div', 'ctl');
+    wrap.appendChild(labelRow(label));
+    wrap.appendChild(choices(label, options.map(function (o) { return o[0]; }),
+      function (i) { set(key, options[i][1]); },
+      function () { return nearest(options, settings[key]); }));
     return wrap;
+  }
+  function nearest(options, v) {
+    let best = 0;
+    options.forEach(function (o, i) {
+      if (typeof v !== 'number') { if (o[1] === v) best = i; return; }
+      if (Math.abs(o[1] - v) < Math.abs(options[best][1] - v)) best = i;
+    });
+    return best;
   }
 
   function select(key, label, options) {
@@ -316,7 +330,14 @@
     return wrap;
   }
 
-  function toggle(key, label) {
+  // An on/off switch for a numeric setting: off is 0, on is `onValue`.
+  function toggleLevel(key, label, onValue) {
+    const t = toggle(null, label, function () { return settings[key] > 0; },
+      function (on) { set(key, on ? (settings[key] > 0 ? settings[key] : onValue) : 0); });
+    return t;
+  }
+
+  function toggle(key, label, get, put) {
     const id = 'ctl-' + key + '-' + (uid++);
     const wrap = el('div', 'ctl ctl--inline');
     const l = el('label', '', label);
@@ -327,11 +348,11 @@
     const input = el('input');
     input.type = 'checkbox';
     input.id = id;
-    input.addEventListener('change', function () { set(key, input.checked); });
+    input.addEventListener('change', function () { if (put) put(input.checked); else set(key, input.checked); });
     sw.appendChild(input);
     sw.appendChild(el('span'));
     wrap.appendChild(sw);
-    refreshers.push(function () { input.checked = !!settings[key]; });
+    refreshers.push(function () { input.checked = get ? get() : !!settings[key]; });
     return wrap;
   }
 
@@ -372,17 +393,44 @@
     return s;
   }
 
+  const LEVELS = {
+    music: [['Off', 0], ['Low', 35], ['Normal', 65], ['Higher', 90]],
+    rain: [['Off', 0], ['Low', 25], ['Normal', 50], ['Higher', 80]]
+  };
+
+  // The main volume, with a mute button at its right end.
+  function volumeRow() {
+    const wrap = range('volume', 'Volume', 0, 100);
+    const r = wrap.querySelector('input');
+    const line = el('div', 'vol-line');
+    wrap.replaceChild(line, r);
+    line.appendChild(r);
+    const m = el('button', 'mute');
+    m.type = 'button';
+    m.innerHTML = knobSound.querySelector('.i-on').outerHTML + knobSound.querySelector('.i-off').outerHTML;
+    m.addEventListener('click', function () { set('muted', !settings.muted); });
+    line.appendChild(m);
+    refreshers.push(function () {
+      m.classList.toggle('is-muted', !!settings.muted);
+      m.setAttribute('aria-label', settings.muted ? 'Unmute' : 'Mute');
+      m.title = settings.muted ? 'Unmute' : 'Mute';
+    });
+    return wrap;
+  }
+
+  const BAR_SCENES = ['photo', 'city', 'harbor'];
+  const SHORT_NAMES = { photo: 'Forest', city: 'City', harbor: 'Harbor' };
+
   const MUSIC = [['track1', 'Rain music 1'], ['track2', 'Rain music 2'], ['ambient', 'Ambient piano'], ['none', 'No music']];
 
   let pauseBtn = null;
-  let soundHint = null;
   function buildUI() {
     // Rain & view popover: the essentials, as simple choices, in two columns.
     const rainPop = $('pop-rain');
     rainPop.innerHTML = '';
     rainPop.classList.add('pop--wide');
     const colA = el('div', 'pop__col');
-    colA.appendChild(select('scene', 'Outside', Scenes.list.map(function (s) { return [s.id, s.name]; })));
+    colA.appendChild(select('scene', 'Scene', Scenes.list.map(function (s) { return [s.id, s.name]; })));
     colA.appendChild(seg('intensity', 'Rain', [['Off', 0], ['Light', 30], ['Medium', 55], ['Heavy', 85]]));
     colA.appendChild(seg('storm', 'Lightning', [['Off', 0], ['Mild', 6], ['Stormy', 55]]));
     const colB = el('div', 'pop__col');
@@ -390,6 +438,7 @@
     colB.appendChild(seg('blur', 'Background blur', [['Clear', 0], ['Normal', 10], ['Distant', 60]]));
     colB.appendChild(seg('fog', 'Window fog', [['Clear', 0], ['Low', 30], ['Medium', 50], ['High', 95]]));
     colB.appendChild(seg('drops', 'Window drops', [['Off', 0], ['Low', 45], ['Normal', 100]]));
+    colA.appendChild(seg('frame', 'Frame', [['Frameless', 'none'], ['Clean', 'clean'], ['Framed', 'framed']]));
     rainPop.appendChild(colA);
     rainPop.appendChild(colB);
 
@@ -397,10 +446,27 @@
     const soundPop = $('pop-sound');
     soundPop.innerHTML = '';
     soundPop.appendChild(select('music', 'Music', MUSIC));
-    soundPop.appendChild(range('volume', 'Volume', 0, 100));
-    soundPop.appendChild(toggle('rainSound', 'Rain sounds'));
-    soundHint = el('p', 'pop__hint');
-    soundPop.appendChild(soundHint);
+    soundPop.appendChild(seg('musicVol', 'Music volume', LEVELS.music));
+    // Off here switches the rain sounds off; any level switches them on.
+    const rainLv = el('div', 'ctl');
+    rainLv.appendChild(labelRow('Rain sounds'));
+    rainLv.appendChild(choices('Rain sounds', LEVELS.rain.map(function (o) { return o[0]; }),
+      function (i) {
+        if (i === 0) { set('rainSound', false); return; }
+        settings.rainVol = LEVELS.rain[i][1];
+        set('rainSound', true);
+        applyVolumes();
+      },
+      function () { return settings.rainSound ? Math.max(1, nearest(LEVELS.rain, settings.rainVol)) : 0; }));
+    soundPop.appendChild(rainLv);
+    soundPop.appendChild(volumeRow());
+
+    // Scene switcher in the sill, shown while the pointer is on it.
+    const bar = $('scene-bar');
+    bar.innerHTML = '';
+    bar.appendChild(choices('Scene', BAR_SCENES.map(function (id) { return SHORT_NAMES[id]; }),
+      function (i) { set('scene', BAR_SCENES[i]); },
+      function () { return BAR_SCENES.indexOf(settings.scene); }));
 
     // Settings panel.
     const body = $('panel-body');
@@ -410,6 +476,7 @@
       select('quality', 'Quality', [['low', 'Low (faster)'], ['medium', 'Medium'], ['high', 'High']]),
       woodPicker(),
       toggle('grain', 'Wood grain'),
+      toggleLevel('storm', 'Lightning & thunder', 6),
       (function () { const r = el('div', 'row'); r.appendChild(button('Fullscreen', toggleFullscreen)); r.appendChild(pauseBtn); return r; })()
     ]));
     body.appendChild(section('View', [
@@ -472,6 +539,7 @@
         break;
       case 'wood':
       case 'grain':
+      case 'frame':
         applyWood();
         break;
       case 'muted':
@@ -500,6 +568,7 @@
   function applyWood() {
     $('frame').dataset.wood = settings.wood;
     $('frame').classList.toggle('grain', !!settings.grain);
+    document.body.dataset.frame = settings.frame;
   }
 
   function applyVolumes() {
@@ -616,8 +685,22 @@
     const sill = frameSill.getBoundingClientRect().height;
     const onFrame = e.clientX < fw || e.clientX > cssW - fw || e.clientY < fw || e.clientY > cssH - sill;
     document.body.classList.toggle('frame-hot', onFrame || !!e.target.closest('.knobs'));
+    if (e.pointerType === 'mouse') {
+      document.body.classList.toggle('sill-hot', e.clientY > cssH - Math.max(sill, 64));
+    }
   }, { passive: true });
-  document.addEventListener('pointerleave', function () { document.body.classList.remove('frame-hot'); });
+  document.addEventListener('pointerleave', function () { document.body.classList.remove('frame-hot', 'sill-hot'); });
+  // On touch screens, a tap on the sill shows the scene switcher for a while.
+  let sillTimer = 0;
+  window.addEventListener('pointerdown', function (e) {
+    if (e.pointerType === 'mouse') return;
+    const sill = frameSill.getBoundingClientRect().height;
+    const onSill = e.clientY > cssH - Math.max(sill, 64);
+    if (!onSill && !e.target.closest('#scene-bar')) return;
+    document.body.classList.add('sill-hot');
+    clearTimeout(sillTimer);
+    sillTimer = setTimeout(function () { document.body.classList.remove('sill-hot'); }, 4000);
+  }, { passive: true });
 
   // A normal cursor that hides after 5 seconds without movement, and turns
   // into a pointing hand while the mouse button is held on the glass.
@@ -641,12 +724,11 @@
     const verb = audio.muted ? 'unmute' : 'mute';
     knobSound.title = audio.muted ? 'Unmute' : 'Mute';
     knobSound.setAttribute('aria-label', 'Sound (click to ' + verb + ')');
-    if (soundHint) soundHint.textContent = (hoverable ? 'Click' : 'Tap') + ' the speaker to ' + verb + '.';
   }
   // A press that was needed to let sound start shouldn't also mute it.
   let gestureStartedSound = false;
   window.addEventListener('pointerdown', function () { gestureStartedSound = audio.isBlocked(); }, { passive: true, capture: true });
-  ['pointerdown', 'pointerup', 'touchend', 'keydown', 'click'].forEach(function (e) {
+  ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'keydown', 'click'].forEach(function (e) {
     window.addEventListener(e, function () {
       audio.start();
       setTimeout(updateSoundKnob, 300);
