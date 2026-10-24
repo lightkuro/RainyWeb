@@ -621,6 +621,7 @@
     $('frame').dataset.wood = settings.wood;
     $('frame').classList.toggle('grain', !!settings.grain);
     document.body.dataset.frame = settings.frame;
+    document.body.dataset.wood = settings.wood;
   }
 
   function applyVolumes() {
