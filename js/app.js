@@ -30,7 +30,7 @@
     music: 'track1',
     rainSound: false,   // the recorded tracks already have rain in them
     rainVol: 50,
-    musicVol: 65,
+    musicVol: 52,
     thunderVol: 40,
     wood: 'classic',
     grain: true,
@@ -57,7 +57,9 @@
         if (!saved.rev && saved.fog === 30) saved.fog = DEFAULTS.fog;
         // Lightning's default moved from Mild to Off.
         if ((saved.rev || 0) < 6 && saved.storm === 6) saved.storm = DEFAULTS.storm;
-        return Object.assign({}, DEFAULTS, saved, { rev: 6 });
+        // Normal music volume moved down from 65.
+        if ((saved.rev || 0) < 7 && saved.musicVol === 65) saved.musicVol = DEFAULTS.musicVol;
+        return Object.assign({}, DEFAULTS, saved, { rev: 7 });
       }
       // Carry choices over from the previous version, with the new defaults
       // for wood grain and fog.
@@ -207,6 +209,7 @@
     const dropsF = settings.drops / 100;
     waterAmt += ((dropsF > 0 ? 1 : 0) - waterAmt) * Math.min(1, dt / 250);
     if (!paused) {
+      updateHold(dt);
       if (dropsF > 0 || waterAmt > 0.01) {
         sim.update(dt, glassSettings());
       }
@@ -394,7 +397,7 @@
   }
 
   const LEVELS = {
-    music: [['Off', 0], ['Low', 35], ['Normal', 65], ['Higher', 90]],
+    music: [['Off', 0], ['Low', 28], ['Normal', 52], ['Higher', 80]],
     rain: [['Off', 0], ['Low', 25], ['Normal', 50], ['Higher', 80]]
   };
 
@@ -472,8 +475,11 @@
     const body = $('panel-body');
     body.innerHTML = '';
     pauseBtn = button(paused ? 'Resume rain' : 'Pause rain', togglePause);
+    const howTo = el('p', 'howto');
+    howTo.innerHTML = 'Tap to add drops.<br>Drag to wipe fog';
+    body.appendChild(howTo);
     body.appendChild(section('', [
-      select('quality', 'Quality', [['low', 'Low (faster)'], ['medium', 'Medium'], ['high', 'High']]),
+      seg('quality', 'Quality', [['Low', 'low'], ['Medium', 'medium'], ['High', 'high']]),
       woodPicker(),
       toggle('grain', 'Wood grain'),
       toggleLevel('storm', 'Lightning & thunder', 6),
@@ -503,7 +509,7 @@
     refreshers.push(function () { adv.hidden = !settings.advanced; });
 
     const help = el('p', 'help');
-    help.innerHTML = 'Tap the glass to add a drop. Press and drag to wipe it.<br>' +
+    help.innerHTML = 'Tap the glass to add a drop, or hold to grow a bigger one. Press and drag to wipe it.<br>' +
       '<kbd>S</kbd> settings · <kbd>M</kbd> mute · <kbd>F</kbd> fullscreen · <kbd>Space</kbd> pause · <kbd>H</kbd> hide controls';
     body.appendChild(section('Tips', [help, (function () {
       const r = el('div', 'row');
@@ -743,10 +749,11 @@
   /* ------------------- Tap to add water, drag to wipe ---------------- */
   const intro = $('intro');
   const DRAG_START = 10; // px of movement before a press becomes a wipe
+  const HOLD_START = 220; // ms of holding still before a drop starts to grow
   let press = null;
   canvas.addEventListener('pointerdown', function (e) {
     if (panel.classList.contains('is-open')) { setPanel(false); return; }
-    press = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, id: e.pointerId, wiping: false };
+    press = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, id: e.pointerId, wiping: false, t0: performance.now(), drop: null };
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('pointermove', function (e) {
@@ -754,6 +761,7 @@
     if (!press.wiping) {
       if (Math.hypot(e.clientX - press.x0, e.clientY - press.y0) < DRAG_START) return;
       press.wiping = true;
+      releaseHold();
     }
     sim.wipe(press.x, press.y, e.clientX, e.clientY, wipeRadius());
     press.x = e.clientX;
@@ -761,12 +769,25 @@
   });
   canvas.addEventListener('pointerup', function (e) {
     if (!press || press.id !== e.pointerId) return;
-    if (!press.wiping) sim.addWater(press.x0, press.y0, simSettings());
+    if (!press.wiping && !press.drop) sim.addWater(press.x0, press.y0, simSettings());
+    releaseHold();
     press = null;
   });
   canvas.addEventListener('pointercancel', function (e) {
-    if (press && press.id === e.pointerId) press = null;
+    if (press && press.id === e.pointerId) { releaseHold(); press = null; }
   });
+  // Called every frame: a press held still grows a drop under it.
+  function updateHold(dt) {
+    if (!press || press.wiping) return;
+    if (!press.drop) {
+      if (performance.now() - press.t0 < HOLD_START) return;
+      press.drop = sim.startHold(press.x0, press.y0, simSettings());
+    }
+    sim.growHold(press.drop, dt, simSettings());
+  }
+  function releaseHold() {
+    if (press && press.drop) sim.endHold(press.drop);
+  }
   function wipeRadius() { return Math.max(18, Math.min(34, Math.min(cssW, cssH) * 0.03)); }
 
   /* ---------------------------- Keyboard ------------------------------ */

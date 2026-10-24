@@ -349,6 +349,7 @@ body.ui-hidden .scene-bar { opacity: 0; pointer-events: none; }
   text-transform: uppercase;
   color: var(--muted);
 }
+.howto { margin: 2px 0 0; font-size: 0.86rem; line-height: 1.55; color: var(--muted); }
 .advanced { display: flex; flex-direction: column; gap: 12px; }
 .advanced[hidden] { display: none; }
 .help { margin: 0; color: var(--muted); font-size: 0.8rem; line-height: 1.6; }
@@ -527,6 +528,19 @@ input[type="range"]::-moz-range-thumb {
   opacity: 0.85;
   text-shadow: 0 1px 12px rgba(0, 0, 0, 0.9);
 }
+.intro__hint {
+  margin-top: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 0.82rem;
+  letter-spacing: 0.12em;
+  color: var(--text);
+  opacity: 0.6;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.9);
+}
+.intro__hint svg { width: 44px; height: 22px; filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.8)); }
 
 .fallback[hidden] { display: none; }
 .fallback {

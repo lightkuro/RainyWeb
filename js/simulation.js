@@ -301,6 +301,7 @@
         // Tiny amount of evaporation on still water.
         d.r -= 0.00015 * k * dt;
         if (d.r < 0.8 * k) { d.fading = true; continue; }
+        if (d.held) continue;
         if (d.r > d.thr) {
           d.moving = true;
           d.vy = 0.1 * this.k;
@@ -371,7 +372,7 @@
     // Over budget: the oldest still drops start to evaporate.
     for (let i = 0; i < alive.length && active > maxDrops; i++) {
       const d = alive[i];
-      if (!d.moving && !d.fading && !d.into) { d.fading = true; active--; }
+      if (!d.moving && !d.fading && !d.into && !d.held) { d.fading = true; active--; }
     }
     this.drops = alive;
   };
@@ -409,11 +410,15 @@
             let big = a, small = b;
             if (b.moving && !a.moving) { big = b; small = a; }
             else if (a.moving === b.moving && b.r > a.r) { big = b; small = a; }
+            // A drop being grown under a finger takes in whatever it touches.
+            if (b.held) { big = b; small = a; } else if (a.held) { big = a; small = b; }
             // A running drop doesn't reach back for beads in its own tail.
             if (big.moving && !small.moving && small.y < big.y - big.r * 0.4) continue;
             const v1 = big.r * big.r * big.r, v2 = small.r * small.r * small.r;
             big.fading = false;
-            if (!big.moving) {
+            if (big.held) {
+              // Stays under the finger.
+            } else if (!big.moving) {
               // Nudge toward the combined centre of mass; the drawn size
               // catches up smoothly.
               const f = v2 / (v1 + v2) * 0.5;
@@ -436,8 +441,28 @@
   RainSim.prototype.addWater = function (xCss, yCss, s) {
     const k = this.sizeK(s);
     const x = xCss * this.k, y = yCss * this.k;
-    this.makeDrop(x, y, rand(5.5, 7) * k, k);
+    const d = this.makeDrop(x, y, rand(5.5, 7) * k, k);
+    d.vr = d.r; // appears at full size straight away
     if (this.onImpact) this.onImpact(6, x / this.W);
+  };
+
+  // Holding on the glass grows a drop under the finger. It stays put while
+  // held and is free to run once let go.
+  RainSim.prototype.startHold = function (xCss, yCss, s) {
+    const k = this.sizeK(s);
+    const d = this.makeDrop(xCss * this.k, yCss * this.k, 2.5 * k, k);
+    d.held = true;
+    if (this.onImpact) this.onImpact(3, d.x / this.W);
+    return d;
+  };
+  RainSim.prototype.growHold = function (d, dtMs, s) {
+    if (!d || d.dead || d.into) return;
+    const k = this.sizeK(s);
+    // Fills up over about two seconds, to the largest drop glass can hold.
+    d.r = Math.min(MAX_R * k, d.r + MAX_R * k * dtMs / 2000);
+  };
+  RainSim.prototype.endHold = function (d) {
+    if (d) d.held = false;
   };
 
   // Water that evaporates from a drop fogs the glass around where it sat.
