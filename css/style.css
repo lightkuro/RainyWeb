@@ -572,19 +572,25 @@ input[type="range"]::-moz-range-thumb {
   opacity: 0.85;
   text-shadow: 0 1px 12px rgba(0, 0, 0, 0.9);
 }
-.intro__hint {
-  margin-top: 22px;
+.hint {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--sill) + 26px);
+  transform: translate(-50%, 6px);
+  z-index: 20;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
   gap: 10px;
   font-size: 0.82rem;
   letter-spacing: 0.12em;
   color: var(--text);
-  opacity: 0.6;
   text-shadow: 0 1px 10px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1.4s ease, transform 1.4s ease;
 }
-.intro__hint svg { width: 44px; height: 22px; filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.8)); }
+.hint.is-shown { opacity: 0.6; transform: translate(-50%, 0); }
+.hint svg { width: 44px; height: 22px; filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.8)); }
 
 .fallback[hidden] { display: none; }
 .fallback {

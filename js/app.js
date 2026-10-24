@@ -30,7 +30,7 @@
     music: 'track1',
     rainSound: true,
     rainVol: 25,        // Low: the recorded tracks already have rain in them
-    musicVol: 52,
+    musicVol: 39,
     thunderVol: 40,
     wood: 'classic',
     grain: true,
@@ -65,7 +65,9 @@
           if (saved.frame === 'framed') saved.frame = DEFAULTS.frame;
           if (saved.rainSound === false && saved.rainVol === 50) { saved.rainSound = true; saved.rainVol = 25; }
         }
-        return Object.assign({}, DEFAULTS, saved, { rev: 8 });
+        // Normal music volume moved down again, from 52.
+        if ((saved.rev || 0) < 9 && saved.musicVol === 52) saved.musicVol = DEFAULTS.musicVol;
+        return Object.assign({}, DEFAULTS, saved, { rev: 9 });
       }
       // Carry choices over from the previous version, with the new defaults
       // for wood grain and fog.
@@ -436,7 +438,7 @@
   }
 
   const LEVELS = {
-    music: [['Off', 0], ['Low', 28], ['Normal', 52], ['Higher', 80]],
+    music: [['Off', 0], ['Low', 20], ['Normal', 39], ['Higher', 65]],
     rain: [['Off', 0], ['Low', 25], ['Normal', 50], ['Higher', 80]]
   };
 
@@ -878,5 +880,10 @@
   // The title drifts away on its own.
   setTimeout(function () { intro.classList.add('is-hidden'); }, 2600);
   setTimeout(function () { intro.hidden = true; }, 5000);
+  // Then a hint at the bottom of the window, for eight seconds.
+  const hint = $('hint');
+  setTimeout(function () { hint.classList.add('is-shown'); }, 4400);
+  setTimeout(function () { hint.classList.remove('is-shown'); }, 12400);
+  setTimeout(function () { hint.hidden = true; }, 14000);
   requestAnimationFrame(function (t) { last = t; frame(t); });
 })();
