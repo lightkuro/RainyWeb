@@ -28,13 +28,13 @@
     volume: 70,
     muted: false,
     music: 'track1',
-    rainSound: false,   // the recorded tracks already have rain in them
-    rainVol: 50,
+    rainSound: true,
+    rainVol: 25,        // Low: the recorded tracks already have rain in them
     musicVol: 52,
     thunderVol: 40,
     wood: 'classic',
     grain: true,
-    frame: 'framed',    // 'none', 'clean' (sill only) or 'framed'
+    frame: 'clean',     // 'none', 'clean' (sill only) or 'framed'
     advanced: false
   };
 
@@ -59,7 +59,13 @@
         if ((saved.rev || 0) < 6 && saved.storm === 6) saved.storm = DEFAULTS.storm;
         // Normal music volume moved down from 65.
         if ((saved.rev || 0) < 7 && saved.musicVol === 65) saved.musicVol = DEFAULTS.musicVol;
-        return Object.assign({}, DEFAULTS, saved, { rev: 7 });
+        if ((saved.rev || 0) < 8) {
+          // Clean became the default frame, and the recorded tracks now
+          // keep a little rain sound under them.
+          if (saved.frame === 'framed') saved.frame = DEFAULTS.frame;
+          if (saved.rainSound === false && saved.rainVol === 50) { saved.rainSound = true; saved.rainVol = 25; }
+        }
+        return Object.assign({}, DEFAULTS, saved, { rev: 8 });
       }
       // Carry choices over from the previous version, with the new defaults
       // for wood grain and fog.
@@ -396,6 +402,20 @@
     return s;
   }
 
+  // A section that folds away under its heading, closed to begin with.
+  function group(title, children) {
+    const d = el('details', 'group');
+    const s = el('summary', '', title);
+    d.appendChild(s);
+    const inner = el('div', 'group__body');
+    children.forEach(function (c) { inner.appendChild(c); });
+    d.appendChild(inner);
+    return d;
+  }
+
+  const ICON_TAP = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" fill="currentColor"/><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="1.4" opacity="0.5"/></svg>';
+  const ICON_SWIPE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 15C6 7 12 6.5 16 11.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity="0.8"/><circle cx="18.5" cy="14" r="2.6" fill="currentColor"/></svg>';
+
   const LEVELS = {
     music: [['Off', 0], ['Low', 28], ['Normal', 52], ['Higher', 80]],
     rain: [['Off', 0], ['Low', 25], ['Normal', 50], ['Higher', 80]]
@@ -452,8 +472,8 @@
     soundPop.appendChild(seg('musicVol', 'Music volume', LEVELS.music));
     // Off here switches the rain sounds off; any level switches them on.
     const rainLv = el('div', 'ctl');
-    rainLv.appendChild(labelRow('Rain sounds'));
-    rainLv.appendChild(choices('Rain sounds', LEVELS.rain.map(function (o) { return o[0]; }),
+    rainLv.appendChild(labelRow('Rain volume'));
+    rainLv.appendChild(choices('Rain volume', LEVELS.rain.map(function (o) { return o[0]; }),
       function (i) {
         if (i === 0) { set('rainSound', false); return; }
         settings.rainVol = LEVELS.rain[i][1];
@@ -475,8 +495,8 @@
     const body = $('panel-body');
     body.innerHTML = '';
     pauseBtn = button(paused ? 'Resume rain' : 'Pause rain', togglePause);
-    const howTo = el('p', 'howto');
-    howTo.innerHTML = 'Tap to add drops.<br>Drag to wipe fog';
+    const howTo = el('div', 'howto');
+    howTo.innerHTML = '<p>' + ICON_TAP + 'Tap to add drops.</p><p>' + ICON_SWIPE + 'Drag to wipe fog</p>';
     body.appendChild(howTo);
     body.appendChild(section('', [
       seg('quality', 'Quality', [['Low', 'low'], ['Medium', 'medium'], ['High', 'high']]),
@@ -485,15 +505,15 @@
       toggleLevel('storm', 'Lightning & thunder', 6),
       (function () { const r = el('div', 'row'); r.appendChild(button('Fullscreen', toggleFullscreen)); r.appendChild(pauseBtn); return r; })()
     ]));
-    body.appendChild(section('View', [
+    body.appendChild(group('View', [
       range('intensity', 'Rain intensity', 0, 100),
       range('fog', 'Window fog', 0, 100, function (v) { return v === 0 ? 'Clear' : v + '%'; }),
       range('blur', 'Background blur', 0, 100),
       range('brightness', 'Brightness', 50, 150)
     ]));
-    body.appendChild(section('Sound levels', [
+    body.appendChild(group('Sound levels', [
       range('musicVol', 'Music', 0, 100),
-      range('rainVol', 'Rain sounds', 0, 100),
+      range('rainVol', 'Rain volume', 0, 100),
       range('thunderVol', 'Thunder', 0, 100)
     ]));
     body.appendChild(toggle('advanced', 'Advanced settings'));
@@ -521,9 +541,12 @@
 
   function set(key, value) {
     settings[key] = value;
-    // The recorded tracks already have rain in them, so their own rain
-    // sounds switch off with them (and back on for the other choices).
-    if (key === 'music') settings.rainSound = !TRACKS[value];
+    // The recorded tracks already have rain in them, so the rain sounds
+    // drop to Low with them (and back to Normal for the other choices).
+    if (key === 'music') {
+      settings.rainSound = true;
+      settings.rainVol = TRACKS[value] ? 25 : 50;
+    }
     save();
     apply(key);
     refreshAll();
@@ -561,6 +584,7 @@
       case 'music':
         audio.setMusic(settings.music);
         audio.setRainSound(settings.rainSound);
+        applyVolumes();
         break;
       case 'rainSound':
         audio.setRainSound(settings.rainSound);
@@ -740,10 +764,15 @@
       setTimeout(updateSoundKnob, 300);
     }, { passive: true, capture: true });
   });
+  // On phones, leaving the browser or locking the screen stops the sound;
+  // it comes back when the page does.
+  const isPhone = window.matchMedia('(pointer: coarse)').matches;
   document.addEventListener('visibilitychange', function () {
     last = performance.now();
     if (!document.hidden) audio.unlock();
+    else if (isPhone) audio.suspend();
   });
+  window.addEventListener('pagehide', function () { if (isPhone) audio.suspend(); });
   setInterval(updateSoundKnob, 1000);
 
   /* ------------------- Tap to add water, drag to wipe ---------------- */

@@ -132,6 +132,14 @@
   };
   AmbientAudio.prototype.resume = AmbientAudio.prototype.unlock;
 
+  // Stops all sound while the page is away; unlock() brings it back.
+  AmbientAudio.prototype.suspend = function () {
+    if (!this.ctx) return;
+    if (this.ctx.suspend) quietly(this.ctx.suspend());
+    if (this.silentEl) this.silentEl.pause();
+    if (this.trackEl) this.trackEl.pause();
+  };
+
   // True while the browser is still holding sound back until a tap.
   AmbientAudio.prototype.isBlocked = function () {
     if (!this.ctx) return true;

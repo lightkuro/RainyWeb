@@ -32,6 +32,8 @@
   const TAILS = [];
   for (let i = 0; i < 14; i++) TAILS.push(i * 0.085);
   const MAX_R = 9.5;                            // CSS px: surface tension won't hold a bigger drop
+  const TAP_R = [7.5, 8.5];                     // a drop added by a tap
+  const HELD_MAX_R = 14;                        // a drop grown under a finger
   const TAIL_W = 0.64;                          // radius of a long tail's rounded end
 
   function rand(a, b) { return a + Math.random() * (b - a); }
@@ -429,7 +431,7 @@
               big.vy *= 1.03;
             }
             // Beyond a few millimetres the extra water just runs off.
-            big.r = Math.min(Math.cbrt(v1 + v2), MAX_R * k);
+            big.r = Math.min(Math.cbrt(v1 + v2), Math.max(MAX_R * k, big.r));
             small.into = big;
           }
         }
@@ -441,7 +443,7 @@
   RainSim.prototype.addWater = function (xCss, yCss, s) {
     const k = this.sizeK(s);
     const x = xCss * this.k, y = yCss * this.k;
-    const d = this.makeDrop(x, y, rand(5.5, 7) * k, k);
+    const d = this.makeDrop(x, y, rand(TAP_R[0], TAP_R[1]) * k, k);
     d.vr = d.r; // appears at full size straight away
     if (this.onImpact) this.onImpact(6, x / this.W);
   };
@@ -450,16 +452,18 @@
   // held and is free to run once let go.
   RainSim.prototype.startHold = function (xCss, yCss, s) {
     const k = this.sizeK(s);
-    const d = this.makeDrop(xCss * this.k, yCss * this.k, 2.5 * k, k);
+    // Starts as a tap's drop, then keeps filling.
+    const d = this.makeDrop(xCss * this.k, yCss * this.k, rand(TAP_R[0], TAP_R[1]) * k, k);
+    d.vr = d.r;
     d.held = true;
-    if (this.onImpact) this.onImpact(3, d.x / this.W);
+    if (this.onImpact) this.onImpact(6, d.x / this.W);
     return d;
   };
   RainSim.prototype.growHold = function (d, dtMs, s) {
     if (!d || d.dead || d.into) return;
     const k = this.sizeK(s);
-    // Fills up over about two seconds, to the largest drop glass can hold.
-    d.r = Math.min(MAX_R * k, d.r + MAX_R * k * dtMs / 2000);
+    // Fills up to its largest over about two and a half seconds.
+    d.r = Math.min(HELD_MAX_R * k, d.r + (HELD_MAX_R - TAP_R[0]) * k * dtMs / 2500);
   };
   RainSim.prototype.endHold = function (d) {
     if (d) d.held = false;
