@@ -24,7 +24,9 @@
     blur: 10,
     refraction: 60,
     brightness: 90,
-    quality: 'high',
+    quality: 'auto',    // 'auto' picks low/medium/high from the frame rate
+    autoLevel: 'medium',// where Auto starts (it remembers what worked last time)
+    fps: false,         // frame-rate counter (Advanced)
     volume: 70,
     muted: false,
     music: 'track1',
@@ -35,14 +37,21 @@
     wood: 'classic',
     grain: true,
     frame: 'clean',     // 'none', 'clean' (sill only) or 'framed'
-    advanced: false
+    advanced: false,
+    // Settings version. Saved with the settings so load() only migrates
+    // values saved by older versions, never choices made in this one.
+    rev: 10
   };
 
+  // Each level caps the device-pixel ratio the glass is rendered at, and sets
+  // the water map's resolution relative to CSS pixels.
   const QUALITY = {
     low: { water: 0.5, dpr: 1 },
     medium: { water: 0.75, dpr: 1.5 },
     high: { water: 1, dpr: 2 }
   };
+  const LEVELS_Q = ['low', 'medium', 'high'];
+  const LEVEL_NAMES = { low: 'Low', medium: 'Medium', high: 'High' };
 
   const WOODS = [['classic', 'Classic'], ['oak', 'Oak'], ['teak', 'Teak'], ['walnut', 'Walnut'], ['mahogany', 'Mahogany']];
 
@@ -67,7 +76,9 @@
         }
         // Normal music volume moved down again, from 52.
         if ((saved.rev || 0) < 9 && saved.musicVol === 52) saved.musicVol = DEFAULTS.musicVol;
-        return Object.assign({}, DEFAULTS, saved, { rev: 9 });
+        // Quality's default moved from High to Auto.
+        if ((saved.rev || 0) < 10 && saved.quality === 'high') saved.quality = DEFAULTS.quality;
+        return Object.assign({}, DEFAULTS, saved, { rev: DEFAULTS.rev });
       }
       // Carry choices over from the previous version, with the new defaults
       // for wood grain and fog.
@@ -78,7 +89,8 @@
         const drops = o.dropsOn === false ? 0 : DEFAULTS.drops;
         delete o.fogOn;
         delete o.dropsOn;
-        return Object.assign({}, DEFAULTS, o, { grain: true, fog: fog, drops: drops });
+        // rev 0: the migrations above still apply on the next load.
+        return Object.assign({}, DEFAULTS, o, { grain: true, fog: fog, drops: drops, rev: 0 });
       }
     } catch (e) { /* storage unavailable */ }
     return Object.assign({}, DEFAULTS);
@@ -88,7 +100,8 @@
   }
 
   let settings = load();
-  if (!QUALITY[settings.quality]) settings.quality = DEFAULTS.quality;
+  if (settings.quality !== 'auto' && !QUALITY[settings.quality]) settings.quality = DEFAULTS.quality;
+  if (!QUALITY[settings.autoLevel]) settings.autoLevel = DEFAULTS.autoLevel;
   if (!WOODS.some(function (w) { return w[0] === settings.wood; })) settings.wood = DEFAULTS.wood;
   if (!Scenes.list.some(function (s) { return s.id === settings.scene; })) settings.scene = DEFAULTS.scene;
 
@@ -128,26 +141,47 @@
 
   /* ---------------------------- Layout -------------------------------- */
   let cssW = 0, cssH = 0;
-  function resize(force) {
-    const w = window.innerWidth, h = window.innerHeight;
-    if (!force && w === cssW && h === cssH) return;
-    cssW = w; cssH = h;
-    const q = QUALITY[settings.quality];
+
+  // The quality level in use: the chosen one, or Auto's current pick.
+  function level() { return settings.quality === 'auto' ? auto.level : settings.quality; }
+
+  // Canvas and water-map scales for the current level and window size.
+  function scales() {
+    const w = cssW, h = cssH;
+    const q = QUALITY[level()];
     const dpr = Math.min(window.devicePixelRatio || 1, q.dpr);
     // Keep the pixel count sane on very large displays.
     const maxPixels = 3200 * 1800;
     let scale = dpr;
     if (w * h * scale * scale > maxPixels) scale = Math.sqrt(maxPixels / (w * h));
-    renderer.resize(Math.round(w * scale), Math.round(h * scale));
     let waterScale = q.water;
     const maxWater = 2200 * 1300;
     if (w * h * waterScale * waterScale > maxWater) waterScale = Math.sqrt(maxWater / (w * h));
-    sim.resize(w, h, waterScale, glassSettings());
+    return { render: scale, water: waterScale };
+  }
+
+  function resize(force) {
+    const w = window.innerWidth, h = window.innerHeight;
+    if (!force && w === cssW && h === cssH) return;
+    cssW = w; cssH = h;
+    const sc = scales();
+    renderer.resize(Math.round(w * sc.render), Math.round(h * sc.render));
+    sim.resize(w, h, sc.water, glassSettings());
     paintScene();
+    settleAuto();
+  }
+
+  // A quality change: new resolutions, but the water on the glass stays.
+  function applyQuality() {
+    const sc = scales();
+    renderer.resize(Math.round(cssW * sc.render), Math.round(cssH * sc.render));
+    sim.rescale(sc.water);
+    paintScene();
+    settleAuto();
   }
 
   function paintScene() {
-    const q = QUALITY[settings.quality];
+    const q = QUALITY[level()];
     const dpr = Math.min(window.devicePixelRatio || 1, q.dpr);
     let bw = Math.round(cssW * dpr), bh = Math.round(cssH * dpr);
     const maxW = 2560;
@@ -202,6 +236,58 @@
     return level;
   }
 
+  /* ------------------------ Auto quality, FPS ------------------------- */
+  // Auto watches the frame rate in 2-second windows. Below 45 fps it steps
+  // down a level and won't try that level again this visit; at 57 fps or
+  // more for three windows in a row it tries the next level up. The level
+  // it settles on is remembered for the next visit.
+  const auto = { level: settings.autoLevel, failed: {}, t: 0, n: 0, good: 0, settleUntil: 0 };
+  function settleAuto() {
+    // Skip the hitch that follows a resize or level change.
+    auto.settleUntil = performance.now() + 3000;
+    auto.t = 0; auto.n = 0;
+  }
+  function setAutoLevel(l) {
+    auto.level = l;
+    settings.autoLevel = l;
+    save();
+    applyQuality();
+    refreshAll();
+  }
+  function watchQuality(ms, now) {
+    if (settings.quality !== 'auto') return;
+    if (document.hidden || ms > 250 || now < auto.settleUntil) { auto.t = 0; auto.n = 0; return; }
+    auto.t += ms;
+    auto.n++;
+    if (auto.t < 2000) return;
+    const rate = auto.n * 1000 / auto.t;
+    auto.t = 0; auto.n = 0;
+    const i = LEVELS_Q.indexOf(auto.level);
+    if (rate < 45 && i > 0) {
+      auto.failed[auto.level] = true;
+      auto.good = 0;
+      setAutoLevel(LEVELS_Q[i - 1]);
+    } else if (rate >= 57 && i < LEVELS_Q.length - 1 && !auto.failed[LEVELS_Q[i + 1]]) {
+      if (++auto.good >= 3) { auto.good = 0; setAutoLevel(LEVELS_Q[i + 1]); }
+    } else {
+      auto.good = 0;
+    }
+  }
+
+  // Frame-rate counter (Advanced settings), updated twice a second.
+  const fpsEl = $('fps');
+  const meter = { t0: performance.now(), n: 0 };
+  function countFrame(now) {
+    meter.n++;
+    if (now - meter.t0 < 500) return;
+    if (settings.fps) {
+      const rate = Math.round(meter.n * 1000 / (now - meter.t0));
+      fpsEl.textContent = rate + ' fps · ' + LEVEL_NAMES[level()] + (settings.quality === 'auto' ? ' (auto)' : '');
+    }
+    meter.t0 = now;
+    meter.n = 0;
+  }
+
   /* ---------------------------- Main loop ----------------------------- */
   let paused = false;
   let last = performance.now();
@@ -210,8 +296,11 @@
 
   let waterAmt = 1;
   function frame(now) {
-    const dt = Math.min(100, now - last);
+    const raw = now - last;
+    const dt = Math.min(100, raw);
     last = now;
+    watchQuality(raw, now);
+    countFrame(now);
     const ss = simSettings();
     // "Window drops": Low lets less water land on the glass; Off dries it
     // quickly and nothing new lands.
@@ -384,6 +473,17 @@
     return wrap;
   }
 
+  // Quality choices, with the level Auto is using shown beside the label.
+  function qualityControl() {
+    const wrap = seg('quality', 'Quality', [['Auto', 'auto'], ['Low', 'low'], ['Medium', 'medium'], ['High', 'high']]);
+    const val = el('span', 'ctl__val');
+    wrap.querySelector('.ctl__label').appendChild(val);
+    refreshers.push(function () {
+      val.textContent = settings.quality === 'auto' ? 'Using ' + LEVEL_NAMES[auto.level] : '';
+    });
+    return wrap;
+  }
+
   function button(text, onClick) {
     const b = el('button', 'btn', text);
     b.type = 'button';
@@ -522,7 +622,7 @@
     howTo.innerHTML = '<p>' + ICON_TAP + 'Tap to add drops.</p><p>' + ICON_SWIPE + 'Drag to wipe fog</p>';
     body.appendChild(howTo);
     body.appendChild(section('', [
-      seg('quality', 'Quality', [['Low', 'low'], ['Medium', 'medium'], ['High', 'high']]),
+      qualityControl(),
       woodPicker(),
       (function () { const r = el('div', 'row'); r.appendChild(button('Fullscreen', toggleFullscreen)); r.appendChild(pauseBtn); return r; })()
     ]));
@@ -542,6 +642,7 @@
     const adv = el('div', 'advanced');
     adv.appendChild(section('', [
       toggle('grain', 'Wood grain'),
+      toggle('fps', 'FPS counter'),
       range('dropSize', 'Drop size', 50, 200),
       range('condensation', 'Condensation', 0, 100),
       range('refraction', 'Refraction', 0, 100),
@@ -585,8 +686,15 @@
         blurRaf = requestAnimationFrame(function () { renderer.setBlur(settings.blur / 100); });
         break;
       case 'quality':
+        // Picking Auto again gives every level a fresh chance.
+        if (settings.quality === 'auto') { auto.failed = {}; auto.good = 0; }
+        applyQuality();
+        break;
       case 'dropSize':
         resize(true);
+        break;
+      case 'fps':
+        applyFps();
         break;
       case 'wood':
       case 'grain':
@@ -617,6 +725,13 @@
     }
   }
 
+  function applyFps() {
+    fpsEl.hidden = !settings.fps;
+    meter.t0 = performance.now();
+    meter.n = 0;
+    if (settings.fps) fpsEl.textContent = '… fps';
+  }
+
   function applyWood() {
     $('frame').dataset.wood = settings.wood;
     $('frame').classList.toggle('grain', !!settings.grain);
@@ -635,7 +750,7 @@
 
   function resetAll() {
     const prev = settings;
-    settings = Object.assign({}, DEFAULTS, { advanced: prev.advanced, muted: prev.muted });
+    settings = Object.assign({}, DEFAULTS, { advanced: prev.advanced, muted: prev.muted, autoLevel: prev.autoLevel });
     save();
     applyWood();
     applyVolumes();
@@ -643,7 +758,9 @@
     audio.setMusic(settings.music);
     audio.setRainSound(settings.rainSound);
     scheduleStrike(performance.now());
-    if (prev.quality !== settings.quality || prev.dropSize !== settings.dropSize) resize(true);
+    applyFps();
+    if (prev.dropSize !== settings.dropSize) resize(true);
+    else if (level() !== (prev.quality === 'auto' ? auto.level : prev.quality)) applyQuality();
     else { paintScene(); }
     refreshAll();
   }
@@ -864,6 +981,7 @@
   /* ---------------------------- Boot ---------------------------------- */
   buildUI();
   applyWood();
+  applyFps();
   resize(true);
   // Repaint once the photo backdrop has decoded.
   Scenes.whenReady(function () { if (settings.scene === 'photo') paintScene(); });

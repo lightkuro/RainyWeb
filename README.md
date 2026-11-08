@@ -25,7 +25,9 @@ Three rings sit in the bottom-right of the window frame. Their icons appear when
 
 - **Rain** (cloud icon): scene, rain, lightning (off by default), frame style (Frameless, Clean with only the sill, the default, or Framed), brightness, background blur, window fog (Clear, Low, Medium, High) and window drops (Off, Low, Normal).
 - **Sound** (speaker icon): hover to choose the music (two recorded rain tracks, generated ambient piano, or none), set the music volume and rain volume (Off, Low, Normal, Higher), and the volume, with a mute button beside it. Click the speaker to mute or unmute. On a phone, tap once to open it and tap again to mute. The recorded tracks already have rain in them, so choosing one turns the rain volume down to Low. On phones, sound stops when you leave the browser or lock the screen.
-- **Settings** (gear icon): quality (Low, Medium, High), frame colour (classic, oak, teak, walnut or mahogany), fullscreen, pause, and folding View (rain intensity, window fog, background blur, brightness) and Sound levels (music, rain and thunder volume) groups. **Advanced settings** adds a wood grain switch, drop size, condensation, refraction and lightning frequency.
+- **Settings** (gear icon): quality (Auto, the default, or a fixed Low, Medium or High), frame colour (classic, oak, teak, walnut or mahogany), fullscreen, pause, and folding View (rain intensity, window fog, background blur, brightness) and Sound levels (music, rain and thunder volume) groups. **Advanced settings** adds a wood grain switch, an FPS counter, drop size, condensation, refraction and lightning frequency.
+
+**Quality.** Each level caps the screen resolution the glass is drawn at and sets the resolution of the water simulation: Low draws at 1 pixel per CSS pixel with the water at half resolution, Medium at up to 1.5 with the water at 75%, High at up to 2 with the water at full resolution. Auto starts at Medium and watches the frame rate: below 45 fps for two seconds it steps down a level (and won't retry that level during the visit), and at 57 fps or more for six seconds it tries the next level up. The level it settles on is remembered for the next visit. Changing quality keeps the water that's on the glass.
 
 On the glass, **tap** to add a drop, **hold** to grow a bigger one, and **press and drag** to wipe it. Keys: `S` settings, `M` mute, `F` fullscreen, `Space` pause, `H` hide the controls.
 
@@ -40,3 +42,4 @@ On the glass, **tap** to add a drop, **hold** to grow a bigger one, and **press 
 | `js/app.js` | Controls, settings, render loop, input |
 | `js/background-data.js` | The forest photo, embedded so it also works when opened from disk |
 | `assets/` | The forest photo and the two music tracks |
+| `favicon.svg`, `favicon.ico`, `apple-touch-icon.png` | Site icon: a raindrop on a night-blue tile |

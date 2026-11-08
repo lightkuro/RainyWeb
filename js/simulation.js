@@ -152,6 +152,36 @@
     this.warmUp(settings);
   };
 
+  // Change the water map's resolution (a quality change) while keeping what's
+  // on the glass: the condensation and fog layers are scaled into the new
+  // canvases, and every drop is scaled to match.
+  RainSim.prototype.rescale = function (scale) {
+    if (!this.W || scale === this.k) return;
+    const f = scale / this.k;
+    const copy = function (src) {
+      const c = document.createElement('canvas');
+      c.width = src.width; c.height = src.height;
+      c.getContext('2d').drawImage(src, 0, 0);
+      return c;
+    };
+    const oldMist = copy(this.mist), oldFog = copy(this.fog);
+    this.k = scale;
+    const W = Math.max(64, Math.round(this.cssW * scale));
+    const H = Math.max(64, Math.round(this.cssH * scale));
+    this.W = W; this.H = H;
+    this.water.width = this.mist.width = W;
+    this.water.height = this.mist.height = H;
+    this.fog.width = Math.ceil(W / FOG_DIV);
+    this.fog.height = Math.ceil(H / FOG_DIV);
+    this.mctx.imageSmoothingQuality = 'high';
+    this.mctx.drawImage(oldMist, 0, 0, W, H);
+    this.fctx.drawImage(oldFog, 0, 0, this.fog.width, this.fog.height);
+    for (let i = 0; i < this.drops.length; i++) {
+      const d = this.drops[i];
+      d.x *= f; d.y *= f; d.r *= f; d.vr *= f; d.thr *= f; d.vy *= f; d.trail *= f;
+    }
+  };
+
   // Pre-soak the window so it already looks wet on the first frame.
   RainSim.prototype.warmUp = function (s) {
     const area = this.area();

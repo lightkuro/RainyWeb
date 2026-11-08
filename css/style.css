@@ -641,3 +641,21 @@ body.ui-hidden .panel { transform: translateX(calc(100% + 40px)); }
   transition: opacity 0.4s ease;
 }
 .brand:hover, .brand:focus-visible { opacity: 0.75; }
+
+/* ---------- Frame-rate counter ---------- */
+.fps {
+  position: fixed;
+  top: calc(var(--fw) + 12px);
+  right: calc(var(--fw) + 14px);
+  z-index: 10;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(7, 9, 15, 0.55);
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  opacity: 0.8;
+  pointer-events: none;
+}
+.fps[hidden] { display: none; }
